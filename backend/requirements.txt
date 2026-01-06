@@ -32,6 +32,7 @@ drf-yasg==1.21.8
 python-dateutil==2.9.0
 pytz==2024.2
 pillow==11.0.0
+requests==2.32.3
 
 # Development and Testing
 pytest==8.3.4
