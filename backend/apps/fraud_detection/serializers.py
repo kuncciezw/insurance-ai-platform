@@ -5,7 +5,7 @@ Django REST Framework Serializers for Fraud Detection models
 from rest_framework import serializers
 from .models import Policyholder, Vehicle, Policy, Claim
 from datetime import date
-
+from django.utils import timezone
 
 class PolicyholderSerializer(serializers.ModelSerializer):
     """Serializer for Policyholder model"""
@@ -199,7 +199,8 @@ class ClaimSerializer(serializers.ModelSerializer):
                 })
         
         if 'incident_date' in data:
-            if data['incident_date'] > date.today():
+            incident_date = data['incident_date'].date() if hasattr(data['incident_date'], 'date') else data['incident_date']
+            if incident_date > date.today():
                 raise serializers.ValidationError({
                     'incident_date': 'Incident date cannot be in the future.'
                 })

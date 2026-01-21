@@ -3,7 +3,7 @@ API ViewSets for Fraud Detection Application
 """
 
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
@@ -424,3 +424,159 @@ class ClaimViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(recent_claims, many=True)
         return Response(serializer.data)
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def fraud_statistics_chart(request):
+    """
+    Get fraud detection statistics for dashboard charts
+    
+    GET /api/fraud-detection/stats/?period=30days
+    
+    Query Parameters:
+    - period: Time period (7days, 30days, 90days, 1year)
+    
+    Response:
+    {
+        "low_risk": 158,
+        "medium_risk": 28,
+        "high_risk": 12,
+        "fraud_rate": 6.1,
+        "low_risk_percentage": 79.8,
+        "medium_risk_percentage": 14.1,
+        "high_risk_percentage": 6.1
+    }
+    """
+    
+    period = request.query_params.get('period', '30days')
+    today = timezone.now().date()
+    
+    # Calculate date range
+    if period == '7days':
+        start_date = today - timedelta(days=7)
+    elif period == '30days':
+        start_date = today - timedelta(days=30)
+    elif period == '90days':
+        start_date = today - timedelta(days=90)
+    else:  # '1year'
+        start_date = today - timedelta(days=365)
+    
+    # Filter claims in period
+    claims = Claim.objects.filter(submitted_date__date__gte=start_date)
+    
+    # Categorize by fraud score
+    # Low risk: fraud_score < 0.3
+    # Medium risk: 0.3 <= fraud_score < 0.7
+    # High risk: fraud_score >= 0.7
+    low_risk = claims.filter(fraud_score__lt=0.3).count()
+    medium_risk = claims.filter(fraud_score__gte=0.3, fraud_score__lt=0.7).count()
+    high_risk = claims.filter(fraud_score__gte=0.7).count()
+    
+    total = low_risk + medium_risk + high_risk
+    
+    if total == 0:
+        return Response({
+            'low_risk': 0,
+            'medium_risk': 0,
+            'high_risk': 0,
+            'fraud_rate': 0,
+            'low_risk_percentage': 0,
+            'medium_risk_percentage': 0,
+            'high_risk_percentage': 0,
+            'period': period,
+            'total_claims': 0
+        })
+    
+    # Calculate fraud rate (high risk claims percentage)
+    fraud_rate = (high_risk / total * 100) if total > 0 else 0
+    
+    return Response({
+        'low_risk': low_risk,
+        'medium_risk': medium_risk,
+        'high_risk': high_risk,
+        'fraud_rate': round(fraud_rate, 1),
+        'low_risk_percentage': round((low_risk / total * 100), 1),
+        'medium_risk_percentage': round((medium_risk / total * 100), 1),
+        'high_risk_percentage': round((high_risk / total * 100), 1),
+        'period': period,
+        'total_claims': total
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def claims_activity_chart(request):
+    """
+    Get claims activity data for dashboard charts
+    
+    GET /api/fraud-detection/activity/?period=12months
+    
+    Query Parameters:
+    - period: Time period (7days, 30days, 12months, 1year)
+    
+    Response:
+    [
+        {"label": "Jan", "count": 45},
+        {"label": "Feb", "count": 52},
+        ...
+    ]
+    """
+    
+    period = request.query_params.get('period', '12months')
+    today = timezone.now().date()
+    
+    if period == '7days':
+        # Last 7 days
+        data = []
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        for i in range(7):
+            date = today - timedelta(days=6-i)
+            count = Claim.objects.filter(submitted_date__date=date).count()
+            data.append({'label': days[date.weekday()], 'count': count})
+    
+    elif period == '30days':
+        # Last 4 weeks
+        data = []
+        for i in range(4):
+            start_date = today - timedelta(days=(4-i)*7)
+            end_date = start_date + timedelta(days=7)
+            count = Claim.objects.filter(
+                submitted_date__date__gte=start_date,
+                submitted_date__date__lt=end_date
+            ).count()
+            data.append({'label': f'Week {i+1}', 'count': count})
+    
+    elif period == '12months':
+        # Last 12 months
+        data = []
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        for i in range(12):
+            # Go back 11 months from today
+            month_date = today.replace(day=1) - timedelta(days=1)
+            for _ in range(10 - i):
+                month_date = month_date.replace(day=1) - timedelta(days=1)
+            
+            count = Claim.objects.filter(
+                submitted_date__year=month_date.year,
+                submitted_date__month=month_date.month
+            ).count()
+            
+            data.append({
+                'label': months[month_date.month - 1], 
+                'count': count
+            })
+    
+    else:  # '1year' - quarters
+        data = []
+        for i in range(4):
+            quarter_start = today - timedelta(days=365) + timedelta(days=i*91)
+            quarter_end = quarter_start + timedelta(days=91)
+            count = Claim.objects.filter(
+                submitted_date__date__gte=quarter_start,
+                submitted_date__date__lt=quarter_end
+            ).count()
+            data.append({'label': f'Q{i+1}', 'count': count})
+    
+    return Response(data)

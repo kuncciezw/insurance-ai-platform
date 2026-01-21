@@ -26,3 +26,4 @@ class StatusChoices(models.TextChoices):
     PENDING = 'PENDING', 'Pending'
     SUSPENDED = 'SUSPENDED', 'Suspended'
     CANCELLED = 'CANCELLED', 'Cancelled'
+    

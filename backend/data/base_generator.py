@@ -1,5 +1,5 @@
 """
-Base data generator utilities
+Base data generator utilities - Zimbabwe Market Configuration
 """
 
 import random
@@ -29,6 +29,33 @@ class DataGenerator:
         return ''.join(random.choices(valid_chars, k=17))
     
     @staticmethod
+    def generate_zim_number_plate():
+        """Generate Zimbabwe number plate format: AAA 1234"""
+        letters = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ', k=3))
+        numbers = ''.join(random.choices('0123456789', k=4))
+        return f"{letters} {numbers}"
+    
+    @staticmethod
+    def generate_zim_national_id():
+        """Generate Zimbabwe National ID format: 63-123456A12"""
+        # Format: YY-NNNNNNANN (YY=year, N=numbers, A=letter)
+        year = random.randint(50, 99)  # Birth year
+        numbers = ''.join(random.choices('0123456789', k=6))
+        letter = random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        check = ''.join(random.choices('0123456789', k=2))
+        return f"{year}-{numbers}{letter}{check}"
+    
+    @staticmethod
+    def generate_zim_mobile():
+        """Generate Zimbabwe mobile number"""
+        # Econet: +263 71/77/78
+        # Netone: +263 71
+        # Telecel: +263 73
+        prefix = random.choice(['71', '77', '78', '73'])
+        number = ''.join(random.choices('0123456789', k=7))
+        return f"+263{prefix}{number}"
+    
+    @staticmethod
     def random_date_between(start_date, end_date):
         """Generate random date between two dates"""
         time_between = end_date - start_date
@@ -39,14 +66,11 @@ class DataGenerator:
     @staticmethod
     def random_datetime_between(start_datetime, end_datetime):
         """Generate random datetime between two datetimes"""
-        # Safety check: ensure start is before end
         if start_datetime >= end_datetime:
-            # If dates are invalid, return start datetime
             return start_datetime
         
         seconds_between = int((end_datetime - start_datetime).total_seconds())
         
-        # Safety check for empty range
         if seconds_between <= 0:
             return start_datetime
         
@@ -65,116 +89,178 @@ class DataGenerator:
 
 
 class InsuranceDataConfig:
-    """Configuration constants for insurance data generation"""
+    """Configuration constants for Zimbabwe insurance market"""
     
-    # Vehicle makes and models with market values
+    # Zimbabwe Provinces and Major Cities
+    PROVINCES = {
+        'HARARE': ['Harare', 'Chitungwiza', 'Epworth', 'Norton', 'Ruwa'],
+        'BULAWAYO': ['Bulawayo'],
+        'MANICALAND': ['Mutare', 'Rusape', 'Chimanimani', 'Chipinge'],
+        'MIDLANDS': ['Gweru', 'Kwekwe', 'Shurugwi', 'Gokwe'],
+        'MASVINGO': ['Masvingo', 'Chiredzi', 'Triangle'],
+        'MASHONALAND_EAST': ['Marondera', 'Ruwa', 'Macheke'],
+        'MASHONALAND_WEST': ['Chinhoyi', 'Kariba', 'Makuti'],
+        'MASHONALAND_CENTRAL': ['Bindura', 'Shamva', 'Mount Darwin'],
+        'MATABELELAND_NORTH': ['Victoria Falls', 'Hwange', 'Binga'],
+        'MATABELELAND_SOUTH': ['Gwanda', 'Beitbridge', 'Plumtree']
+    }
+    
+    # Common Zimbabwean Shona Surnames
+    SHONA_SURNAMES = [
+        'Moyo', 'Ncube', 'Dube', 'Sibanda', 'Ndlovu', 'Mpofu', 'Khumalo',
+        'Nyathi', 'Madziva', 'Chikwanha', 'Mapfumo', 'Mudzingwa', 'Chiduku',
+        'Mutasa', 'Gumbo', 'Muromo', 'Mushonga', 'Chipanga', 'Marowa',
+        'Mavhima', 'Chimombe', 'Mlambo', 'Nkomo', 'Phiri', 'Banda',
+        'Tshuma', 'Mpofu', 'Zhou', 'Chikwava', 'Magura', 'Rusere',
+        'Makoni', 'Mutamangira', 'Shumba', 'Mhuru', 'Gwaze', 'Biti',
+        'Macheka', 'Chihuri', 'Mawere', 'Takaendesa', 'Chipunza', 'Matanga'
+    ]
+    
+    # Common Zimbabwean Ndebele Surnames
+    NDEBELE_SURNAMES = [
+        'Ncube', 'Dube', 'Sibanda', 'Ndlovu', 'Mpofu', 'Khumalo', 'Moyo',
+        'Nyathi', 'Nkomo', 'Tshuma', 'Mhlanga', 'Mlilo', 'Nyoni', 'Nkala',
+        'Gumede', 'Hadebe', 'Ngwenya', 'Mazibuko', 'Mkhize', 'Zungu'
+    ]
+    
+    # Common Zimbabwean First Names (Mixed - Shona/Ndebele/English)
+    FIRST_NAMES = {
+        'MALE': [
+            # Shona names
+            'Tendai', 'Tapiwa', 'Tinashe', 'Tatenda', 'Tawanda', 'Takudzwa',
+            'Munyaradzi', 'Panashe', 'Tanaka', 'Anesu', 'Tinotenda', 'Tafadzwa',
+            # Ndebele names
+            'Nkululeko', 'Siyabonga', 'Lungile', 'Khulekani', 'Mandla', 'Thabo',
+            # English/Common names
+            'Brian', 'Michael', 'David', 'Peter', 'John', 'James', 'Andrew',
+            'Christopher', 'Richard', 'Thomas', 'Daniel', 'Joseph'
+        ],
+        'FEMALE': [
+            # Shona names
+            'Rudo', 'Chiedza', 'Tsitsi', 'Rumbidzai', 'Tariro', 'Nyasha',
+            'Ropafadzo', 'Chenai', 'Rutendo', 'Memory', 'Tendai', 'Yeukai',
+            # Ndebele names
+            'Nothando', 'Nobuhle', 'Siphiwe', 'Zanele', 'Thandi', 'Lindiwe',
+            # English/Common names
+            'Sandra', 'Patricia', 'Elizabeth', 'Mary', 'Grace', 'Faith',
+            'Sharon', 'Michelle', 'Angela', 'Christine', 'Sarah', 'Rachel'
+        ]
+    }
+    
+    # Vehicles common in Zimbabwe market
     VEHICLES = {
         'Toyota': {
-            'models': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Prius'],
-            'base_value': (20000, 45000),
+            'models': ['Corolla', 'Hilux', 'Land Cruiser', 'Fortuner', 'Vitz', 
+                      'Wish', 'Prado', 'RunX', 'Yaris', 'Raum'],
+            'base_value': (6000, 65000),
+            'type': 'SEDAN'  # Note: Hilux/Land Cruiser would be TRUCK/SUV
+        },
+        'Nissan': {
+            'models': ['X-Trail', 'March', 'Navara', 'Patrol', 'Note', 
+                      'Qashqai', 'Juke', 'Hardbody', 'NP300'],
+            'base_value': (5000, 50000),
             'type': 'SEDAN'
         },
         'Honda': {
-            'models': ['Accord', 'Civic', 'CR-V', 'Pilot', 'Odyssey'],
-            'base_value': (22000, 48000),
+            'models': ['Fit', 'CR-V', 'Accord', 'Civic', 'Stream', 'HR-V'],
+            'base_value': (5500, 40000),
+            'type': 'SEDAN'
+        },
+        'Mazda': {
+            'models': ['Demio', 'Axela', 'CX-5', 'BT-50', 'Atenza', 'Premacy'],
+            'base_value': (4500, 38000),
+            'type': 'SEDAN'
+        },
+        'Isuzu': {
+            'models': ['D-Max', 'KB', 'MU-X', 'Trooper'],
+            'base_value': (12000, 55000),
+            'type': 'TRUCK'
+        },
+        'Mercedes-Benz': {
+            'models': ['C-Class', 'E-Class', 'GLE', 'Sprinter', 'Vito', 'ML-Class'],
+            'base_value': (15000, 85000),
+            'type': 'SEDAN'
+        },
+        'BMW': {
+            'models': ['3 Series', '5 Series', 'X3', 'X5', '1 Series', 'X1'],
+            'base_value': (12000, 75000),
+            'type': 'SEDAN'
+        },
+        'Volkswagen': {
+            'models': ['Polo', 'Golf', 'Amarok', 'Tiguan', 'Passat'],
+            'base_value': (7000, 45000),
             'type': 'SEDAN'
         },
         'Ford': {
-            'models': ['F-150', 'Explorer', 'Escape', 'Mustang', 'Edge'],
-            'base_value': (25000, 55000),
+            'models': ['Ranger', 'Fiesta', 'Focus', 'EcoSport', 'Everest'],
+            'base_value': (8000, 50000),
             'type': 'TRUCK'
         },
-        'Chevrolet': {
-            'models': ['Silverado', 'Equinox', 'Malibu', 'Tahoe', 'Traverse'],
-            'base_value': (24000, 52000),
-            'type': 'TRUCK'
-        },
-        'BMW': {
-            'models': ['3 Series', '5 Series', 'X3', 'X5', 'X7'],
-            'base_value': (40000, 85000),
-            'type': 'SEDAN'
-        },
-        'Mercedes-Benz': {
-            'models': ['C-Class', 'E-Class', 'GLC', 'GLE', 'S-Class'],
-            'base_value': (42000, 95000),
-            'type': 'SEDAN'
-        },
-        'Tesla': {
-            'models': ['Model 3', 'Model Y', 'Model S', 'Model X'],
-            'base_value': (40000, 100000),
-            'type': 'SEDAN'
-        },
-        'Nissan': {
-            'models': ['Altima', 'Sentra', 'Rogue', 'Pathfinder', 'Murano'],
-            'base_value': (20000, 42000),
-            'type': 'SEDAN'
-        },
-        'Jeep': {
-            'models': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Compass', 'Gladiator'],
-            'base_value': (28000, 58000),
+        'Mitsubishi': {
+            'models': ['Pajero', 'L200', 'ASX', 'Outlander', 'Colt'],
+            'base_value': (6000, 45000),
             'type': 'SUV'
         },
-        'Audi': {
-            'models': ['A4', 'A6', 'Q5', 'Q7', 'Q8'],
-            'base_value': (38000, 80000),
+        'Suzuki': {
+            'models': ['Swift', 'Vitara', 'Jimny', 'Alto', 'Dzire'],
+            'base_value': (4000, 25000),
             'type': 'SEDAN'
         }
     }
     
-    # US States
-    US_STATES = [
-        'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
-        'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho',
-        'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana',
-        'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
-        'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
-        'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
-        'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon',
-        'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
-        'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-        'West Virginia', 'Wisconsin', 'Wyoming'
-    ]
-    
-    # Occupations with income ranges
+    # Zimbabwe occupations with realistic income ranges (USD monthly)
     OCCUPATIONS = {
         'EMPLOYED': {
             'titles': [
-                'Software Engineer', 'Teacher', 'Nurse', 'Accountant',
-                'Marketing Manager', 'Sales Representative', 'Engineer',
-                'Project Manager', 'Business Analyst', 'HR Manager'
+                'Teacher', 'Nurse', 'Accountant', 'Bank Teller', 'Civil Servant',
+                'Sales Representative', 'Administrator', 'IT Officer', 'Pharmacist',
+                'Engineer', 'Manager', 'Supervisor', 'Secretary'
             ],
-            'income_range': (40000, 120000)
+            'income_range': (200, 2500)  # Monthly USD
         },
         'SELF_EMPLOYED': {
             'titles': [
-                'Consultant', 'Contractor', 'Freelancer', 'Business Owner',
-                'Real Estate Agent', 'Attorney', 'Doctor', 'Dentist'
+                'Business Owner', 'Trader', 'Contractor', 'Consultant', 
+                'Transport Operator', 'Shop Owner', 'Vendor', 'Farmer'
             ],
-            'income_range': (50000, 250000)
+            'income_range': (150, 5000)  # Monthly USD
         },
         'RETIRED': {
             'titles': ['Retired'],
-            'income_range': (25000, 80000)
+            'income_range': (80, 800)  # Monthly USD (pension)
         },
         'STUDENT': {
             'titles': ['Student'],
-            'income_range': (0, 30000)
+            'income_range': (0, 300)  # Monthly USD
         },
         'UNEMPLOYED': {
             'titles': ['Unemployed'],
-            'income_range': (0, 15000)
+            'income_range': (0, 50)  # Monthly USD
         }
     }
     
-    # Incident locations (common types)
+    # Zimbabwe incident locations
     INCIDENT_LOCATIONS = [
-        'Highway', 'Parking Lot', 'Residential Street', 'Downtown',
-        'Shopping Center', 'Intersection', 'Highway Exit', 'Rural Road',
-        'School Zone', 'Office Complex', 'Gas Station', 'Restaurant Parking',
-        'Mall Parking Structure', 'Side Street', 'Main Street'
+        'Harare CBD', 'Bulawayo CBD', 'Highway A1', 'Highway A2', 'Highway A5',
+        'Chirundu Border Post', 'Beitbridge Border Post', 'Victoria Falls',
+        'Shopping Center Parking', 'Residential Area', 'Township Road',
+        'Industrial Area', 'Robert Mugabe Road', 'Samora Machel Avenue',
+        'Simon Mazorodze Road', 'Bulawayo Road', 'Airport Road',
+        'Rural Road', 'Farm Road', 'Main Street', 'Parking Lot',
+        'Gas Station', 'Commuter Terminus', 'Tollgate', 'Roadblock'
     ]
     
-    # Fraud indicators and patterns
+    # Credit rating system (Zimbabwe doesn't use FICO scores like US)
+    # But we'll keep numeric score for ML models (internal use)
+    CREDIT_RATINGS = {
+        'EXCELLENT': (750, 850),
+        'GOOD': (650, 749),
+        'FAIR': (550, 649),
+        'POOR': (400, 549),
+        'NO_HISTORY': (300, 450)
+    }
+    
+    # Fraud patterns specific to Zimbabwe context
     FRAUD_PATTERNS = {
         'amount_inflation': {
             'weight': 0.3,
@@ -192,8 +278,16 @@ class InsuranceDataConfig:
             'weight': 0.15,
             'claims_per_year': (3, 6)
         },
-        'suspicious_witnesses': {
-            'weight': 0.1,
-            'witness_pattern': 'always_present'
+        'cross_border_incidents': {
+            'weight': 0.18,
+            'border_cities': ['Beitbridge', 'Victoria Falls', 'Mutare', 'Chirundu']
+        },
+        'staged_hijacking': {
+            'weight': 0.12,
+            'high_risk_areas': ['Township', 'CBD Night', 'Industrial Area']
+        },
+        'parts_theft_inflation': {
+            'weight': 0.10,
+            'common_parts': ['Engine', 'Gearbox', 'Wheels', 'Catalytic Converter']
         }
     }

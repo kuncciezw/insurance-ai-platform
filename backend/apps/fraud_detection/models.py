@@ -44,6 +44,9 @@ class Policyholder(models.Model):
     last_name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
+    national_id = models.CharField(max_length=20, blank=True, null=True)
+    credit_rating = models.CharField(max_length=20, blank=True, null=True)  # EXCELLENT, GOOD, etc.
+    monthly_income = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     # Contact information
     email = models.EmailField(unique=True, db_index=True)

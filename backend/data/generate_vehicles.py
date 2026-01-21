@@ -1,5 +1,5 @@
 """
-Generate synthetic vehicle data
+Generate synthetic vehicle data - Zimbabwe Market
 """
 
 import random
@@ -9,105 +9,122 @@ from .base_generator import DataGenerator, InsuranceDataConfig
 
 
 class VehicleGenerator(DataGenerator):
-    """Generate realistic vehicle data"""
+    """Generate realistic Zimbabwe vehicle data"""
     
     VEHICLE_TYPES = {
-        'SEDAN': ['SEDAN', 'COUPE', 'HATCHBACK'],
+        'SEDAN': ['SEDAN', 'HATCHBACK'],
         'SUV': ['SUV'],
-        'TRUCK': ['TRUCK'],
-        'VAN': ['VAN'],
-        'SPORTS': ['SPORTS']
+        'TRUCK': ['TRUCK', 'PICKUP'],
+        'VAN': ['VAN', 'MINIBUS'],
+        'KOMBI': ['KOMBI']  # Common in Zimbabwe for public transport
     }
     
-    FUEL_TYPES = ['PETROL', 'DIESEL', 'ELECTRIC', 'HYBRID']
+    FUEL_TYPES = ['PETROL', 'DIESEL', 'HYBRID']  # Electric rare in Zimbabwe
     
     @staticmethod
     def generate_vehicle(policyholder_id, index):
-        """Generate a single vehicle for a policyholder"""
+        """Generate a single vehicle for a Zimbabwe policyholder"""
         
-        # Select random make and model
+        # Select random make and model (Zimbabwe market)
         make = random.choice(list(InsuranceDataConfig.VEHICLES.keys()))
         vehicle_info = InsuranceDataConfig.VEHICLES[make]
         model = random.choice(vehicle_info['models'])
         
-        # Vehicle year (weighted towards recent years)
+        # Vehicle year (Zimbabwe has many older vehicles due to import market)
         current_year = datetime.now().year
+        # Weighted towards older vehicles (10-20 years old common)
         year = VehicleGenerator.weighted_choice(
-            list(range(current_year - 15, current_year + 1)),
-            [1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 18, 20, 15]
+            list(range(current_year - 25, current_year + 1)),
+            # More weight on 2005-2015 vehicles
+            [1, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 8, 10, 12, 10, 8, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1]
         )
         
         # Vehicle type
         base_type = vehicle_info['type']
-        if base_type == 'SEDAN':
+        
+        # Specific adjustments for Zimbabwe market
+        if make in ['Toyota', 'Nissan', 'Isuzu', 'Ford'] and model in ['Hilux', 'Navara', 'D-Max', 'Ranger']:
+            vehicle_type = 'TRUCK'
+        elif make in ['Toyota', 'Nissan'] and model in ['Land Cruiser', 'Patrol', 'Fortuner']:
+            vehicle_type = 'SUV'
+        elif base_type == 'SEDAN':
             vehicle_type = VehicleGenerator.weighted_choice(
                 VehicleGenerator.VEHICLE_TYPES['SEDAN'],
-                [0.7, 0.2, 0.1]
+                [0.7, 0.3]
             )
         else:
             vehicle_type = base_type
         
-        # Market value (depreciates with age)
+        # Market value (depreciates with age - Zimbabwe market values)
         base_value_range = vehicle_info['base_value']
         base_value = random.uniform(base_value_range[0], base_value_range[1])
         vehicle_age = current_year - year
-        depreciation = 0.85 ** vehicle_age  # 15% per year
+        
+        # Depreciation (steeper for older vehicles)
+        if vehicle_age <= 5:
+            depreciation = 0.88 ** vehicle_age  # 12% per year
+        else:
+            depreciation = (0.88 ** 5) * (0.92 ** (vehicle_age - 5))  # 8% after 5 years
+        
         market_value = Decimal(base_value * depreciation)
         
-        # Fuel type (Tesla is electric, luxury brands more likely hybrid)
-        if make == 'Tesla':
-            fuel_type = 'ELECTRIC'
-        elif make in ['BMW', 'Mercedes-Benz', 'Audi']:
+        # Fuel type (diesel popular for trucks, petrol for cars)
+        if vehicle_type in ['TRUCK', 'SUV']:
             fuel_type = VehicleGenerator.weighted_choice(
-                VehicleGenerator.FUEL_TYPES,
-                [0.4, 0.2, 0.2, 0.2]
+                ['DIESEL', 'PETROL'],
+                [0.7, 0.3]
             )
         else:
             fuel_type = VehicleGenerator.weighted_choice(
                 VehicleGenerator.FUEL_TYPES,
-                [0.6, 0.2, 0.1, 0.1]
+                [0.75, 0.20, 0.05]  # Petrol, Diesel, Hybrid
             )
         
-        # Engine capacity based on fuel type and vehicle type
-        if fuel_type == 'ELECTRIC':
-            engine_capacity = 0
+        # Engine capacity
+        if fuel_type == 'HYBRID':
+            engine_capacity = random.randint(1300, 2000)
         elif vehicle_type in ['TRUCK', 'SUV']:
-            engine_capacity = random.randint(2500, 5500)
+            engine_capacity = random.randint(2400, 5000)
         else:
-            engine_capacity = random.randint(1400, 3500)
+            engine_capacity = random.randint(1200, 2500)
         
         # Seating capacity
         if vehicle_type == 'TRUCK':
             seating_capacity = random.choice([2, 5])
         elif vehicle_type == 'VAN':
-            seating_capacity = random.choice([7, 8])
+            seating_capacity = random.choice([7, 8, 14])  # 14 for kombis
+        elif vehicle_type == 'KOMBI':
+            seating_capacity = 14
         elif vehicle_type == 'SUV':
             seating_capacity = random.choice([5, 7])
         else:
-            seating_capacity = random.choice([4, 5])
+            seating_capacity = 5
         
-        # Odometer reading (higher for older vehicles)
-        avg_miles_per_year = random.randint(10000, 15000)
-        odometer_reading = vehicle_age * avg_miles_per_year + random.randint(-2000, 2000)
+        # Odometer reading (higher for older vehicles, in kilometers)
+        avg_km_per_year = random.randint(15000, 25000)  # Zimbabweans drive a lot
+        odometer_reading = vehicle_age * avg_km_per_year + random.randint(-3000, 3000)
         odometer_reading = max(0, odometer_reading)
         
-        # Safety features (newer vehicles more likely to have them)
-        has_anti_theft = random.random() > (0.3 if year > current_year - 5 else 0.6)
-        has_airbags = year > 2000 or random.random() > 0.1
-        has_abs = year > 2005 or random.random() > 0.2
+        # Safety features (older vehicles less likely to have them)
+        has_anti_theft = random.random() > (0.25 if year > current_year - 10 else 0.70)
+        has_airbags = year > 2005 or random.random() > 0.15
+        has_abs = year > 2008 or random.random() > 0.30
         
-        # Modifications (more likely on older, cheaper vehicles)
-        is_modified = random.random() < (0.15 if market_value < 30000 and vehicle_age > 5 else 0.05)
+        # Modifications (common in Zimbabwe - especially for off-road)
+        is_modified = random.random() < (0.25 if vehicle_type in ['TRUCK', 'SUV'] else 0.08)
+        
+        # Zimbabwe registration number
+        registration_number = VehicleGenerator.generate_zim_number_plate()
         
         vehicle = {
-            'vehicle_id': VehicleGenerator.generate_id('VEH', 10),
+            'vehicle_id': VehicleGenerator.generate_id('ZW-VEH', 10),
             'policyholder_id': policyholder_id,
             'make': make,
             'model': model,
             'year': year,
             'vehicle_type': vehicle_type,
             'vin': VehicleGenerator.generate_vin(),
-            'registration_number': f"{random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ')}{random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ')}{random.randint(1000, 9999)}",
+            'registration_number': registration_number,
             'engine_capacity': engine_capacity,
             'fuel_type': fuel_type,
             'seating_capacity': seating_capacity,
@@ -123,13 +140,13 @@ class VehicleGenerator(DataGenerator):
     
     @staticmethod
     def generate_batch(policyholders):
-        """Generate vehicles for policyholders"""
+        """Generate vehicles for Zimbabwe policyholders"""
         print(f"Generating vehicles for {len(policyholders)} policyholders...")
         vehicles = []
         
         for i, policyholder in enumerate(policyholders):
-            # Most policyholders have 1 vehicle, some have 2-3
-            num_vehicles = VehicleGenerator.weighted_choice([1, 2, 3], [0.7, 0.25, 0.05])
+            # Most have 1 vehicle, some have 2 (less 3+ due to economic constraints)
+            num_vehicles = VehicleGenerator.weighted_choice([1, 2, 3], [0.80, 0.18, 0.02])
             
             for v in range(num_vehicles):
                 vehicle = VehicleGenerator.generate_vehicle(

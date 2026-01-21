@@ -229,10 +229,10 @@ def generate_all_data(num_policyholders=1000, fraud_rate=0.15, save_csv=True, lo
         save_to_csv(
             policyholders,
             'policyholders.csv',
-            ['policy_holder_id', 'first_name', 'last_name', 'date_of_birth', 'gender',
+            ['policy_holder_id','national_id', 'first_name', 'last_name', 'date_of_birth', 'gender',
              'email', 'phone_number', 'address_line1', 'address_line2', 'city', 'state',
-             'postal_code', 'country', 'marital_status', 'occupation', 'annual_income',
-             'credit_score', 'years_with_company', 'is_active']
+             'postal_code', 'country', 'marital_status', 'occupation', 'monthly_income','annual_income',
+             'credit_score','credit_rating', 'years_with_company', 'is_active']
         )
         
         save_to_csv(
