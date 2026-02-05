@@ -32,7 +32,6 @@
 
 The Intelligent Insurance Operations Platform automates critical insurance processes using machine learning. The system addresses three major challenges: fraudulent claims detection, risk-based premium calculation, and manual claims processing delays.
 
-**Educational Context**: This is a final year college project demonstrating production-grade implementation of AI/ML in the insurance sector. While built for educational purposes, it follows industry best practices and uses enterprise-level technologies.
 
 **Localization**: Uses Zimbabwe-centric demonstration data (Harare location, USD currency) while maintaining international insurance standards.
 
@@ -729,14 +728,6 @@ python manage.py migrate dashboard zero
 python manage.py migrate
 ```
 
-### Performance Tips
-
-1. **Development**: Use SQLite for faster development (edit settings.py)
-2. **ML Training**: Use GPU if available (install tensorflow-gpu)
-3. **Data Volume**: Start with 100 policyholders for testing, scale to 1000+ for demo
-4. **Browser**: Use Chrome/Edge for best React performance
-5. **Cache**: Clear Redis cache if data seems stale: `redis-cli FLUSHALL`
-
 ---
 
 ## License
@@ -746,14 +737,6 @@ This project is created for **educational purposes** as a final year college pro
 **MIT License** - Feel free to use this code for learning and educational purposes. For commercial use, please consult with the authors.
 
 ---
-
-## Authors
-
-**[Your Name]** - Final Year Computer Science Student  
-**Project Type**: Final Year Project (InsurTech AI Platform)  
-**Institution**: [Your University Name]  
-**Academic Year**: 2024/2025  
-**Supervisor**: [Supervisor Name] (if applicable)
 
 ---
 
@@ -809,7 +792,4 @@ http://localhost:8000/api/docs/  # API Docs
 **Need Help?** 
 - Check [Troubleshooting](#troubleshooting) section
 - Review API docs at http://localhost:8000/api/docs/
-- Consult Django/React documentation
 - Review code comments for inline explanations
-
-**Happy Coding! 🚀**
