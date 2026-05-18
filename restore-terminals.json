@@ -1,0 +1,52 @@
+{
+  "artificialDelayMilliseconds": 5000,
+  "keepExistingTerminalsOpen": false,
+  "runOnStartup": true,
+  "terminals": [
+    {
+      "splitTerminals": [
+        {
+          "name": "Frontend Server (React)",
+          "commands": [
+            "cd \"C:\\Users\\LEE\\Desktop\\CODE\\Python\\insurance-ai-platform\\frontend\"",
+            "npm start"
+          ]
+        },
+        {
+          "name": "Backend Server (Django)",
+          "commands": [
+            "cd \"C:\\Users\\LEE\\Desktop\\CODE\\Python\\insurance-ai-platform\\backend\"",
+            ".\\venv\\Scripts\\activate",
+            "python manage.py runserver"
+          ]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "Backend Ops (Django)",
+          "commands": [
+            "cd \"C:\\Users\\LEE\\Desktop\\CODE\\Python\\insurance-ai-platform\\backend\"",
+            ".\\venv\\Scripts\\activate",
+            "cls"
+          ]
+        },
+        {
+          "name": "Database Ops",
+          "commands": [
+            "cd \"C:\\Users\\LEE\\Desktop\\CODE\\Python\\insurance-ai-platform\\backend\"",
+            "cls"
+          ]
+        },
+        {
+          "name": "Git",
+          "commands": [
+            "cd \"C:\\Users\\LEE\\Desktop\\CODE\\Python\\insurance-ai-platform\"",
+            "cls"
+          ]
+        }
+      ]
+    }
+  ]
+}
