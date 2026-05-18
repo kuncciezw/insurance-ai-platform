@@ -23,14 +23,20 @@ class Quote(models.Model):
         ('EXPIRED', 'Expired'),
         ('CONVERTED', 'Converted to Policy'),
     ]
-    
+
+    # ADDED: Currency choices to match the Policy model
+    CURRENCY_CHOICES = [
+        ('USD', 'USD'),
+        ('ZWG', 'ZWG'),
+    ]
+
     POLICY_TYPE_CHOICES = [
         ('COMPREHENSIVE', 'Comprehensive'),
         ('THIRD_PARTY', 'Third Party'),
         ('COLLISION', 'Collision'),
         ('LIABILITY', 'Liability'),
     ]
-    
+
     COVERAGE_LEVEL_CHOICES = [
         ('BASIC', 'Basic'),
         ('STANDARD', 'Standard'),
@@ -40,7 +46,7 @@ class Quote(models.Model):
     # Primary identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     quote_number = models.CharField(max_length=20, unique=True, db_index=True)
-    
+
     # Relationships (optional - for existing customers)
     policyholder = models.ForeignKey(
         Policyholder,
@@ -56,12 +62,15 @@ class Quote(models.Model):
         null=True,
         blank=True
     )
-    
+
     # Quote details
     policy_type = models.CharField(max_length=20, choices=POLICY_TYPE_CHOICES)
     coverage_level = models.CharField(max_length=20, choices=COVERAGE_LEVEL_CHOICES)
     status = models.CharField(max_length=20, choices=QUOTE_STATUS_CHOICES, default='DRAFT')
-    
+
+    # ADDED: Currency field to carry over to Policy on conversion
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD')
+
     # Customer information (for new customers)
     customer_age = models.IntegerField(
         validators=[MinValueValidator(18), MaxValueValidator(100)],
@@ -77,9 +86,10 @@ class Quote(models.Model):
         validators=[MinValueValidator(0)],
         default=0
     )
-    
+
     # Vehicle information (for new vehicles)
-    vehicle_year = models.IntegerField(
+    # RENAMED: vehicle_year → vehicle_manufacture_year
+    vehicle_manufacture_year = models.IntegerField(
         validators=[MinValueValidator(1900), MaxValueValidator(2030)],
         null=True,
         blank=True
@@ -95,7 +105,7 @@ class Quote(models.Model):
     )
     vehicle_has_anti_theft = models.BooleanField(default=False)
     vehicle_is_modified = models.BooleanField(default=False)
-    
+
     # Coverage details
     coverage_amount = models.DecimalField(
         max_digits=12,
@@ -107,7 +117,7 @@ class Quote(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.00'))]
     )
-    
+
     # Pricing (calculated by ML model)
     base_premium = models.DecimalField(
         max_digits=10,
@@ -133,7 +143,7 @@ class Quote(models.Model):
         default=Decimal('0.00'),
         validators=[MinValueValidator(Decimal('0.00'))]
     )
-    
+
     # ML model information
     ml_predicted_premium = models.DecimalField(
         max_digits=10,
@@ -146,22 +156,22 @@ class Quote(models.Model):
         validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
         help_text="Model confidence in prediction (0-1)"
     )
-    
+
     # Risk factors breakdown (JSON field for flexibility)
     risk_factors = models.JSONField(
         default=dict,
         blank=True,
         help_text="Breakdown of risk factors affecting price"
     )
-    
+
     # Additional options
     has_roadside_assistance = models.BooleanField(default=False)
     has_rental_coverage = models.BooleanField(default=False)
     has_glass_coverage = models.BooleanField(default=False)
-    
+
     # Validity
     valid_until = models.DateField(null=True, blank=True)
-    
+
     # Conversion tracking
     converted_policy = models.ForeignKey(
         Policy,
@@ -170,17 +180,17 @@ class Quote(models.Model):
         null=True,
         blank=True
     )
-    
+
     # Notes and metadata
     notes = models.TextField(blank=True, null=True)
     customer_email = models.EmailField(blank=True, null=True)
     customer_phone = models.CharField(max_length=15, blank=True, null=True)
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     sent_at = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         db_table = 'quotes'
         ordering = ['-created_at']
@@ -199,7 +209,7 @@ class Quote(models.Model):
         if self.policyholder:
             return f"Quote {self.quote_number} - {self.policyholder.full_name}"
         return f"Quote {self.quote_number}"
-    
+
     @property
     def is_valid(self):
         """Check if quote is still valid"""
@@ -207,7 +217,7 @@ class Quote(models.Model):
         if self.valid_until:
             return self.status in ['CALCULATED', 'SENT'] and self.valid_until >= date.today()
         return False
-    
+
     @property
     def days_until_expiry(self):
         """Days until quote expires"""
@@ -215,11 +225,11 @@ class Quote(models.Model):
         if self.valid_until and self.valid_until > date.today():
             return (self.valid_until - date.today()).days
         return 0
-    
+
     def calculate_total_premium(self):
         """Calculate total premium with adjustments"""
         total = self.base_premium + self.risk_adjustment - self.discount_amount
-        
+
         # Add optional coverages
         if self.has_roadside_assistance:
             total += Decimal('50.00')
@@ -227,7 +237,7 @@ class Quote(models.Model):
             total += Decimal('75.00')
         if self.has_glass_coverage:
             total += Decimal('30.00')
-        
+
         return max(total, Decimal('0.00'))
 
 
@@ -248,7 +258,7 @@ class PriceHistory(models.Model):
 
     # Primary identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
+
     # Relationships
     policy = models.ForeignKey(
         Policy,
@@ -262,7 +272,7 @@ class PriceHistory(models.Model):
         null=True,
         blank=True
     )
-    
+
     # Price information
     previous_premium = models.DecimalField(
         max_digits=10,
@@ -285,11 +295,11 @@ class PriceHistory(models.Model):
         default=0.0,
         help_text="Percentage change in premium"
     )
-    
+
     # Change details
     change_reason = models.CharField(max_length=30, choices=CHANGE_REASON_CHOICES)
     change_description = models.TextField(blank=True, null=True)
-    
+
     # Risk factors at this point in time
     risk_score_snapshot = models.FloatField(
         default=0.0,
@@ -300,18 +310,18 @@ class PriceHistory(models.Model):
         blank=True,
         help_text="Risk factors at time of pricing"
     )
-    
+
     # Effective dates
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
-    
+
     # Metadata
     created_by = models.CharField(max_length=100, default='SYSTEM')
     notes = models.TextField(blank=True, null=True)
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         db_table = 'price_history'
         ordering = ['-created_at']
@@ -326,7 +336,7 @@ class PriceHistory(models.Model):
 
     def __str__(self):
         return f"Price History - {self.policy.policy_number} ({self.effective_from})"
-    
+
     @property
     def is_current(self):
         """Check if this is the current pricing"""
@@ -335,7 +345,7 @@ class PriceHistory(models.Model):
         if self.effective_to:
             return self.effective_from <= today <= self.effective_to
         return self.effective_from <= today
-    
+
     def save(self, *args, **kwargs):
         """Calculate premium change on save"""
         if self.previous_premium and self.new_premium:

@@ -6,6 +6,7 @@ FIXED VERSION - Added prediction capping to prevent database overflow
 import os
 import sys
 import joblib
+import shap
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -229,6 +230,132 @@ class ModelLoader:
                 'isolation_forest': iso_weight
             }
         }
+        
+    def explain_fraud_prediction(self, claim_features_df):
+        """
+        Generate per-feature SHAP explanations for a fraud prediction.
+    
+        Accepts the same object passed to predict_fraud() — a row or single-row
+        DataFrame already produced by FeatureEngineer.engineer_fraud_detection_features().
+    
+        Returns
+        ───────
+        dict
+            base_value      float   — model's average output (SHAP baseline)
+            risk_increasers list    — features that raised the fraud score
+            risk_decreasers list    — features that lowered the fraud score
+            top_features    list    — top-10 features sorted by |impact|
+    
+        Each list item contains:
+            feature (str), label (str), impact_weight (float),
+            rank (int), reason (str)
+        """
+        import shap  # lazy import — only needed when explainability is called
+    
+        if self.fraud_model is None:
+            self.load_fraud_detection_model()
+    
+        # ── normalise input to a single-row DataFrame ─────────────────────────
+        import pandas as pd
+        if isinstance(claim_features_df, dict):
+            df = pd.DataFrame([claim_features_df])
+        elif isinstance(claim_features_df, pd.Series):
+            df = claim_features_df.to_frame().T.reset_index(drop=True)
+        else:
+            df = claim_features_df.iloc[[0]].copy() if len(claim_features_df) > 1 else claim_features_df.copy()
+    
+        # Ensure every expected feature column exists
+        for feat in self.fraud_features:
+            if feat not in df.columns:
+                df[feat] = 0
+    
+        X = df[self.fraud_features].fillna(0)
+        X_scaled = self.fraud_scaler.transform(X)
+    
+        # ── SHAP TreeExplainer (exact + fast for XGBoost) ────────────────────
+        explainer = shap.TreeExplainer(self.fraud_model)
+        shap_raw  = explainer.shap_values(X_scaled)
+    
+        # XGBoost binary:logistic → shap_values is (n_samples, n_features).
+        # Newer shap versions may return a list [negative_class, positive_class].
+        if isinstance(shap_raw, list):
+            shap_row = shap_raw[1][0]           # positive-class values, sample 0
+        else:
+            shap_row = shap_raw[0]              # sample 0
+    
+        # Base value (expected model output)
+        ev = explainer.expected_value
+        base_value = float(ev[1] if hasattr(ev, '__len__') else ev)
+    
+        # ── Friendly labels covering all 18 features in FRAUD_DETECTION_FEATURES
+        _LABELS = {
+            # Temporal / policy signals
+            "days_since_policy_start":    "Days Since Policy Started",
+            "policyholder_claim_count":   "Previous Claims Count",
+            "claim_to_coverage_ratio":    "Claim-to-Coverage Ratio",
+            "submission_delay_hours":     "Submission Delay (hours)",
+            "years_with_company":         "Years With Company",
+            "incident_day_of_week":       "Day of Week of Incident",
+            "incident_month":             "Month of Incident",
+            "incident_hour":              "Hour of Incident",
+            # Claim descriptors
+            "claimed_amount":             "Claimed Amount",
+            "severity_encoded":           "Claim Severity",
+            "claim_type_encoded":         "Claim Type",
+            # Vehicle signals
+            "vehicle_age":                "Vehicle Age (years)",        # ← was missing before
+            "vehicle_value":              "Vehicle Market Value",
+            "has_anti_theft":             "Anti-Theft Device Present",
+            "is_modified":                "Vehicle Modified",
+            # Incident scope
+            "number_of_vehicles_involved": "Number of Vehicles Involved",
+            # Policyholder risk profile
+            "policyholder_age":           "Policyholder Age",
+            "credit_score":               "Credit Score",
+        }
+    
+        # ── Pair feature names with their SHAP values and rank ───────────────
+        contributions = sorted(
+            zip(self.fraud_features, shap_row),
+            key=lambda x: abs(x[1]),
+            reverse=True,
+        )
+    
+        NEAR_ZERO = 0.001   # ignore contributions smaller than this
+    
+        result = {
+            "base_value":      base_value,
+            "risk_increasers": [],
+            "risk_decreasers": [],
+            "top_features":    [],
+        }
+    
+        for rank, (feature, impact) in enumerate(contributions[:10], start=1):
+            label    = _LABELS.get(feature, feature.replace("_", " ").title())
+            impact_f = round(float(impact), 6)
+    
+            entry = {
+                "feature":       feature,
+                "label":         label,
+                "impact_weight": impact_f,
+                "rank":          rank,
+            }
+    
+            if impact_f > NEAR_ZERO:
+                entry["reason"] = f"{label} increased the fraud risk score."
+                result["risk_increasers"].append(entry)
+            elif impact_f < -NEAR_ZERO:
+                entry["reason"] = f"{label} reduced the fraud risk score."
+                result["risk_decreasers"].append(entry)
+    
+            result["top_features"].append({
+                "feature":    feature,
+                "label":      label,
+                "impact":     impact_f,
+                "abs_impact": round(abs(impact_f), 6),
+            })
+    
+        return result
     
     def predict_premium(self, policy_data):
         """

@@ -11,7 +11,7 @@ from decimal import Decimal
 
 class QuoteSerializer(serializers.ModelSerializer):
     """Serializer for Quote model"""
-    
+
     is_valid = serializers.ReadOnlyField()
     days_until_expiry = serializers.ReadOnlyField()
     policyholder_name = serializers.CharField(
@@ -20,14 +20,16 @@ class QuoteSerializer(serializers.ModelSerializer):
     )
     vehicle_display = serializers.SerializerMethodField()
     total_premium = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Quote
         fields = [
             'id', 'quote_number', 'policyholder', 'policyholder_name',
             'vehicle', 'vehicle_display', 'policy_type', 'coverage_level', 'status',
+            'currency',                          # ADDED
             'customer_age', 'customer_credit_score', 'customer_years_experience',
-            'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_value',
+            'vehicle_manufacture_year',          # RENAMED from vehicle_year
+            'vehicle_make', 'vehicle_model', 'vehicle_value',
             'vehicle_has_anti_theft', 'vehicle_is_modified',
             'coverage_amount', 'deductible', 'base_premium', 'risk_adjustment',
             'discount_amount', 'final_premium', 'ml_predicted_premium',
@@ -42,19 +44,21 @@ class QuoteSerializer(serializers.ModelSerializer):
             'is_valid', 'days_until_expiry', 'ml_predicted_premium',
             'confidence_score', 'risk_factors'
         ]
-    
+
     def get_vehicle_display(self, obj):
         """Return vehicle display string"""
         if obj.vehicle:
-            return f"{obj.vehicle.year} {obj.vehicle.make} {obj.vehicle.model}"
-        elif obj.vehicle_year and obj.vehicle_make and obj.vehicle_model:
-            return f"{obj.vehicle_year} {obj.vehicle_make} {obj.vehicle_model}"
+            # UPDATED: vehicle.year → vehicle.manufacture_year
+            return f"{obj.vehicle.manufacture_year} {obj.vehicle.make} {obj.vehicle.model}"
+        elif obj.vehicle_manufacture_year and obj.vehicle_make and obj.vehicle_model:
+            # UPDATED: vehicle_year → vehicle_manufacture_year
+            return f"{obj.vehicle_manufacture_year} {obj.vehicle_make} {obj.vehicle_model}"
         return None
-    
+
     def get_total_premium(self, obj):
         """Calculate and return total premium"""
         return float(obj.calculate_total_premium())
-    
+
     def validate(self, data):
         """Validate quote data"""
         # Ensure either policyholder or customer info is provided
@@ -65,50 +69,52 @@ class QuoteSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         field: f'{field} is required for new customers'
                     })
-        
+
         # Ensure either vehicle or vehicle info is provided
         if not data.get('vehicle'):
-            required_vehicle_fields = ['vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_value']
+            # UPDATED: vehicle_year → vehicle_manufacture_year
+            required_vehicle_fields = [
+                'vehicle_manufacture_year', 'vehicle_make', 'vehicle_model', 'vehicle_value'
+            ]
             for field in required_vehicle_fields:
                 if not data.get(field):
                     raise serializers.ValidationError({
                         field: f'{field} is required for new vehicles'
                     })
-        
+
         # Validate coverage amount vs deductible
         if data.get('coverage_amount') and data.get('deductible'):
             if data['deductible'] >= data['coverage_amount']:
                 raise serializers.ValidationError({
                     'deductible': 'Deductible must be less than coverage amount'
                 })
-        
+
         return data
-    
+
     def create(self, validated_data):
         """Generate quote number on creation"""
         if not validated_data.get('quote_number'):
-            # Generate unique quote number
             import random
             quote_num = f"QTE-{random.randint(100000000000, 999999999999)}"
             validated_data['quote_number'] = quote_num
-        
+
         # Set valid_until to 30 days from now if not provided
         if not validated_data.get('valid_until'):
             validated_data['valid_until'] = date.today() + timedelta(days=30)
-        
+
         return super().create(validated_data)
 
 
 class QuoteListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing quotes"""
-    
+
     policyholder_name = serializers.CharField(
         source='policyholder.full_name',
         read_only=True
     )
     vehicle_display = serializers.SerializerMethodField()
     is_valid = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Quote
         fields = [
@@ -116,7 +122,7 @@ class QuoteListSerializer(serializers.ModelSerializer):
             'policy_type', 'coverage_level', 'status', 'final_premium',
             'valid_until', 'is_valid', 'created_at'
         ]
-    
+
     def get_vehicle_display(self, obj):
         if obj.vehicle:
             return f"{obj.vehicle.make} {obj.vehicle.model}"
@@ -127,7 +133,7 @@ class QuoteListSerializer(serializers.ModelSerializer):
 
 class QuoteCalculationInputSerializer(serializers.Serializer):
     """Serializer for quote calculation input"""
-    
+
     # Policy details
     policy_type = serializers.ChoiceField(
         choices=['COMPREHENSIVE', 'THIRD_PARTY', 'COLLISION', 'LIABILITY']
@@ -145,7 +151,7 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
         decimal_places=2,
         min_value=Decimal('0.00')
     )
-    
+
     # Customer information (for new customers)
     policyholder_id = serializers.UUIDField(required=False, allow_null=True)
     customer_age = serializers.IntegerField(
@@ -165,10 +171,11 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
         required=False,
         default=0
     )
-    
+
     # Vehicle information (for new vehicles)
     vehicle_id = serializers.UUIDField(required=False, allow_null=True)
-    vehicle_year = serializers.IntegerField(
+    # RENAMED: vehicle_year → vehicle_manufacture_year
+    vehicle_manufacture_year = serializers.IntegerField(
         min_value=1900,
         max_value=2030,
         required=False,
@@ -193,12 +200,12 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
     )
     vehicle_has_anti_theft = serializers.BooleanField(default=False)
     vehicle_is_modified = serializers.BooleanField(default=False)
-    
+
     # Optional coverages
     has_roadside_assistance = serializers.BooleanField(default=False)
     has_rental_coverage = serializers.BooleanField(default=False)
     has_glass_coverage = serializers.BooleanField(default=False)
-    
+
     def validate(self, data):
         """Validate that either IDs or details are provided"""
         # Check customer info
@@ -210,31 +217,32 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     "Either policyholder_id or customer details (age, credit_score) must be provided"
                 )
-        
+
         # Check vehicle info
         if not data.get('vehicle_id'):
+            # UPDATED: vehicle_year → vehicle_manufacture_year
             if not all([
-                data.get('vehicle_year'),
+                data.get('vehicle_manufacture_year'),
                 data.get('vehicle_make'),
                 data.get('vehicle_model'),
                 data.get('vehicle_value')
             ]):
                 raise serializers.ValidationError(
-                    "Either vehicle_id or vehicle details (year, make, model, value) must be provided"
+                    "Either vehicle_id or vehicle details (manufacture_year, make, model, value) must be provided"
                 )
-        
+
         # Validate deductible vs coverage
         if data['deductible'] >= data['coverage_amount']:
             raise serializers.ValidationError(
                 "Deductible must be less than coverage amount"
             )
-        
+
         return data
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):
     """Serializer for PriceHistory model"""
-    
+
     is_current = serializers.ReadOnlyField()
     policy_number = serializers.CharField(
         source='policy.policy_number',
@@ -244,7 +252,7 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         source='policy.policyholder.full_name',
         read_only=True
     )
-    
+
     class Meta:
         model = PriceHistory
         fields = [
@@ -258,7 +266,7 @@ class PriceHistorySerializer(serializers.ModelSerializer):
             'id', 'premium_change', 'premium_change_percentage',
             'is_current', 'created_at'
         ]
-    
+
     def validate(self, data):
         """Validate price history dates"""
         if data.get('effective_from') and data.get('effective_to'):
@@ -271,13 +279,13 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
 class PriceHistoryListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing price history"""
-    
+
     policy_number = serializers.CharField(
         source='policy.policy_number',
         read_only=True
     )
     is_current = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = PriceHistory
         fields = [
@@ -289,7 +297,7 @@ class PriceHistoryListSerializer(serializers.ModelSerializer):
 
 class PriceComparisonSerializer(serializers.Serializer):
     """Serializer for price comparison results"""
-    
+
     quote_number = serializers.CharField()
     policy_type = serializers.CharField()
     coverage_level = serializers.CharField()

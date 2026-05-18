@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from './notifications/useNotification';
-import { Shield, Eye, EyeOff, Clock } from 'lucide-react';
+import { Shield, Eye, EyeOff } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,6 +16,45 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // New state for branding and carousel
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const carImages = [
+    '/assets/car_1.jpeg',
+    '/assets/car_2.jpeg',
+    '/assets/car_3.jpeg'
+  ];
+
+  const overlayTexts = [
+    "AI-Powered Fraud Detection",
+    "Smart Claims Processing",
+    "Dynamic Premium Calculation"
+  ];
+
+  useEffect(() => {
+    fetchCompanyProfile();
+    // Image carousel interval
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev + 1) % carImages.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchCompanyProfile = async () => {
+    try {
+      const data = await api.getCompanyProfile();
+      setCompanyProfile(data);
+    } catch (err) {
+      setCompanyProfile({
+        company_name: 'Insurance AI Platform',
+        company_tagline: 'Intelligent Operations',
+        primary_color: '#FF6B4A',
+        secondary_color: '#2C3E50',
+      });
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -24,9 +64,7 @@ export default function Login() {
       showNotification('Login successful!', 'success');
       navigate('/dashboard');
     } catch (err) {
-      // Handle specific error types
       if (err.status === 403) {
-        // Check if it's a pending approval status
         if (err.data?.status === 'pending_approval' || err.message.includes('pending approval')) {
           showNotification(
             'Your account is pending approval. An administrator will review your application shortly.',
@@ -56,88 +94,60 @@ export default function Login() {
     });
   };
 
+  const primaryColor = companyProfile?.primary_color || '#FF6B4A';
+  const secondaryColor = companyProfile?.secondary_color || '#2C3E50';
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: '#F8F9FA' }}>
+    <div className="h-screen overflow-hidden flex flex-col md:flex-row bg-white font-sans">
       <NotificationContainer />
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: '#2C3E50' }}
-            >
-              <Shield className="w-8 h-8 text-white" />
+      
+      {/* Left Area - Form (40%) */}
+      <div className="w-full md:w-[40%] h-full flex flex-col justify-center p-8 lg:p-12 xl:p-16 relative overflow-y-auto shadow-2xl z-10 bg-white">
+        <div className="w-full max-w-md mx-auto space-y-8">
+          {/* Header */}
+          <div className="text-center md:text-left">
+            <div className="flex justify-center md:justify-start mb-6">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all"
+                style={{ backgroundColor: secondaryColor }}
+              >
+                <Shield className="w-7 h-7 text-white" />
+              </div>
             </div>
+            <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight" style={{ color: secondaryColor }}>
+              {companyProfile ? companyProfile.company_name : 'Loading...'}
+            </h2>
+            <p className="mt-2 text-base font-medium" style={{ color: '#7F8C8D' }}>
+              {companyProfile ? companyProfile.company_tagline : ''}
+            </p>
           </div>
-          <h2 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
-            Insurance AI Platform
-          </h2>
-          <p className="mt-2" style={{ color: '#7F8C8D' }}>
-            Sign in to your account
-          </p>
-        </div>
 
-        <div
-          className="rounded-lg shadow-lg p-8"
-          style={{ backgroundColor: 'white' }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium mb-2"
-                style={{ color: '#2C3E50' }}
-              >
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="username"
-                required
-                value={formData.username}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2"
-                style={{
-                  borderColor: '#E5E7EB',
-                  backgroundColor: '#F8F9FA',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#FF6B4A';
-                  e.target.style.backgroundColor = 'white';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#E5E7EB';
-                  e.target.style.backgroundColor = '#F8F9FA';
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium mb-2"
-                style={{ color: '#2C3E50' }}
-              >
-                Password
-              </label>
-              <div className="relative">
+          {/* Form */}
+          <div className="bg-[#F8F9FA] rounded-3xl shadow-sm p-6 lg:p-10 border border-slate-100">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="username"
+                  className="block text-xs font-bold tracking-wider uppercase mb-2"
+                  style={{ color: secondaryColor }}
+                >
+                  Username
+                </label>
                 <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
+                  id="username"
+                  name="username"
+                  type="text"
+                  autoComplete="username"
                   required
-                  value={formData.password}
+                  value={formData.username}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 pr-12"
+                  className="w-full px-5 py-4 rounded-2xl border-2 transition-colors focus:outline-none focus:ring-0 focus:bg-white text-base font-medium"
                   style={{
                     borderColor: '#E5E7EB',
                     backgroundColor: '#F8F9FA',
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#FF6B4A';
+                    e.target.style.borderColor = primaryColor;
                     e.target.style.backgroundColor = 'white';
                   }}
                   onBlur={(e) => {
@@ -145,44 +155,131 @@ export default function Login() {
                     e.target.style.backgroundColor = '#F8F9FA';
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-100"
-                  style={{ color: '#7F8C8D' }}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-xs font-bold tracking-wider uppercase mb-2"
+                  style={{ color: secondaryColor }}
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="w-full px-5 py-4 rounded-2xl border-2 transition-colors focus:outline-none focus:ring-0 focus:bg-white text-base font-medium pr-12"
+                    style={{
+                      borderColor: '#E5E7EB',
+                      backgroundColor: '#F8F9FA',
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = primaryColor;
+                      e.target.style.backgroundColor = 'white';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#E5E7EB';
+                      e.target.style.backgroundColor = '#F8F9FA';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 rounded-xl hover:bg-slate-200 transition-colors"
+                    style={{ color: '#7F8C8D' }}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-4 px-4 rounded-2xl text-white font-bold text-lg transition-transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                  style={{ 
+                    backgroundColor: primaryColor,
+                    boxShadow: `0 8px 20px -4px ${primaryColor}80` // Dynamic shadow based on primary color
+                  }}
+                >
+                  {isLoading ? 'Signing in...' : 'Sign in'}
                 </button>
               </div>
+            </form>
+
+            <div className="mt-8 text-center">
+              <p className="text-sm font-medium" style={{ color: '#7F8C8D' }}>
+                Don't have an account?{' '}
+                <Link
+                  to="/register"
+                  className="font-bold hover:underline transition-all"
+                  style={{ color: primaryColor }}
+                >
+                  Register Here
+                </Link>
+              </p>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 px-4 rounded-lg text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#FF6B4A' }}
-              onMouseEnter={(e) => {
-                if (!isLoading) e.target.style.backgroundColor = '#E55A3A';
-              }}
-              onMouseLeave={(e) => {
-                if (!isLoading) e.target.style.backgroundColor = '#FF6B4A';
-              }}
+      {/* Right Area - Image Display (60%) */}
+      <div className="hidden md:flex w-full md:w-[60%] h-full relative bg-slate-900 overflow-hidden">
+        {carImages.map((src, idx) => (
+          <div
+            key={src}
+            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              idx === currentImageIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'
+            }`}
+            style={{
+              backgroundImage: `url(${src})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          >
+            {/* Dark Gradient Overlay for text readability */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/40 to-transparent" />
+          </div>
+        ))}
+
+        {/* Carousel Content */}
+        <div className="relative z-20 w-full h-full flex flex-col justify-end p-12 lg:p-24 pb-20">
+          <div 
+            key={currentImageIndex} 
+            className="animate-in fade-in slide-in-from-bottom-8 duration-1000"
+          >
+            <div 
+              className="inline-block px-4 py-1.5 mb-6 rounded-full text-xs font-bold tracking-wider text-white uppercase backdrop-blur-md bg-white/20 border border-white/30 shadow-lg"
             >
-              {isLoading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p style={{ color: '#7F8C8D' }}>
-              Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="font-medium"
-                style={{ color: '#FF6B4A' }}
-              >
-                Register
-              </Link>
+              Enterprise Solution
+            </div>
+            <h1 className="text-4xl lg:text-6xl xl:text-7xl font-extrabold text-white mb-6 drop-shadow-xl leading-tight">
+              {overlayTexts[currentImageIndex]}
+            </h1>
+            <p className="text-lg lg:text-xl text-slate-200 max-w-xl drop-shadow-lg font-medium leading-relaxed">
+              Empowering the future of insurance with advanced analytics, seamless onboarding, and intelligent workflow automation.
             </p>
+          </div>
+
+          {/* Dots Indicator */}
+          <div className="flex gap-3 mt-12">
+            {carImages.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentImageIndex(idx)}
+                className={`h-1.5 rounded-full transition-all duration-500 shadow-md ${
+                  idx === currentImageIndex ? 'w-12 bg-white' : 'w-4 bg-white/40 hover:bg-white/70'
+                }`}
+                aria-label={`Go to slide ${idx + 1}`}
+              />
+            ))}
           </div>
         </div>
       </div>

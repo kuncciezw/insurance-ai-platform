@@ -2,8 +2,12 @@ import { useState } from 'react';
 import Sidebar from './Sidebar';
 import { Calculator, DollarSign, TrendingUp, Shield, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
+import { useCurrencyFormatter } from '../utils/currencyFormatter';
 
 export default function PremiumCalculator() {
+  const { fmtMoney } = useCurrencyFormatter();
+  const [currency, setCurrency] = useState('USD');
+
   const [formData, setFormData] = useState({
     // Policy details
     policy_type: 'COMPREHENSIVE',
@@ -96,16 +100,30 @@ export default function PremiumCalculator() {
       
       <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F8F9FA' }}>
         <div className="p-8">
-          {/* Page Title */}
-          <div className="flex items-center mb-8">
-            <Calculator className="w-8 h-8 mr-3" style={{ color: '#FF6B4A' }} />
-            <div>
-              <h1 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
-                AI Premium Calculator
-              </h1>
-              <p className="mt-1" style={{ color: '#7F8C8D' }}>
-                Calculate insurance premiums using machine learning
-              </p>
+          {/* Page Title & Currency Toggle */}
+          <div className="flex items-start justify-between mb-8">
+            <div className="flex items-center">
+              <Calculator className="w-8 h-8 mr-3" style={{ color: '#FF6B4A' }} />
+              <div>
+                <h1 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
+                  AI Premium Calculator
+                </h1>
+                <p className="mt-1" style={{ color: '#7F8C8D' }}>
+                  Calculate insurance premiums using machine learning
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7F8C8D' }}>Currency</span>
+              <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#E5E7EB' }}>
+                {['USD', 'ZWG'].map((c) => (
+                  <button key={c} onClick={() => setCurrency(c)}
+                    className="px-4 py-1.5 rounded-lg text-sm font-bold transition-all duration-200"
+                    style={{ backgroundColor: currency === c ? '#FF6B4A' : 'transparent', color: currency === c ? '#FFFFFF' : '#7F8C8D', boxShadow: currency === c ? '0 2px 6px rgba(255,107,74,0.35)' : 'none' }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -230,7 +248,7 @@ export default function PremiumCalculator() {
 
                       <div>
                         <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                          Coverage Amount (USD) *
+                          Coverage Amount ({currency}) *
                         </label>
                         <input
                           type="number"
@@ -247,7 +265,7 @@ export default function PremiumCalculator() {
 
                       <div>
                         <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                          Deductible (USD) *
+                          Deductible ({currency}) *
                         </label>
                         <input
                           type="number"
@@ -322,7 +340,7 @@ export default function PremiumCalculator() {
 
                       <div>
                         <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                          Market Value (USD) *
+                          Market Value ({currency}) *
                         </label>
                         <input
                           type="number"
@@ -381,7 +399,7 @@ export default function PremiumCalculator() {
                           onChange={handleChange}
                           className="mr-2 w-4 h-4"
                         />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Roadside Assistance (+$50/year)</span>
+                        <span className="text-sm" style={{ color: '#2C3E50' }}>Roadside Assistance (+{fmtMoney(50, currency)}/year)</span>
                       </label>
                       <label className="flex items-center">
                         <input
@@ -391,7 +409,7 @@ export default function PremiumCalculator() {
                           onChange={handleChange}
                           className="mr-2 w-4 h-4"
                         />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Rental Coverage (+$75/year)</span>
+                        <span className="text-sm" style={{ color: '#2C3E50' }}>Rental Coverage (+{fmtMoney(75, currency)}/year)</span>
                       </label>
                       <label className="flex items-center">
                         <input
@@ -401,7 +419,7 @@ export default function PremiumCalculator() {
                           onChange={handleChange}
                           className="mr-2 w-4 h-4"
                         />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Glass Coverage (+$30/year)</span>
+                        <span className="text-sm" style={{ color: '#2C3E50' }}>Glass Coverage (+{fmtMoney(30, currency)}/year)</span>
                       </label>
                     </div>
                   </div>
@@ -462,7 +480,7 @@ export default function PremiumCalculator() {
                         Annual Premium
                       </p>
                       <p className="text-4xl font-bold mb-4" style={{ color: '#2C3E50' }}>
-                        ${result.final_premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {fmtMoney(result.final_premium, currency)}
                       </p>
                       <div
                         className="inline-block px-4 py-2 rounded-full text-sm font-medium"
@@ -484,14 +502,14 @@ export default function PremiumCalculator() {
                         <div className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: '#F8F9FA' }}>
                           <span className="text-sm" style={{ color: '#7F8C8D' }}>Base Premium (ML)</span>
                           <span className="font-medium" style={{ color: '#2C3E50' }}>
-                            ${result.ml_predicted_premium.toLocaleString()}
+                            {fmtMoney(result.ml_predicted_premium, currency)}
                           </span>
                         </div>
                         {result.risk_adjustment > 0 && (
                           <div className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: '#FEE2E2' }}>
                             <span className="text-sm" style={{ color: '#7F8C8D' }}>Risk Adjustment</span>
                             <span className="font-medium" style={{ color: '#DC3545' }}>
-                              +${result.risk_adjustment.toLocaleString()}
+                              +{fmtMoney(result.risk_adjustment, currency)}
                             </span>
                           </div>
                         )}
@@ -499,7 +517,7 @@ export default function PremiumCalculator() {
                           <div className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: '#D1FAE5' }}>
                             <span className="text-sm" style={{ color: '#7F8C8D' }}>Discounts</span>
                             <span className="font-medium" style={{ color: '#10B981' }}>
-                              -${result.discount_amount.toLocaleString()}
+                              -{fmtMoney(result.discount_amount, currency)}
                             </span>
                           </div>
                         )}
@@ -515,19 +533,19 @@ export default function PremiumCalculator() {
                         <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#F8F9FA' }}>
                           <span className="text-sm" style={{ color: '#7F8C8D' }}>Monthly</span>
                           <span className="font-bold" style={{ color: '#2C3E50' }}>
-                            ${(result.final_premium / 12).toFixed(0)}
+                            {fmtMoney(result.final_premium / 12, currency)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#F8F9FA' }}>
                           <span className="text-sm" style={{ color: '#7F8C8D' }}>Quarterly</span>
                           <span className="font-bold" style={{ color: '#2C3E50' }}>
-                            ${(result.final_premium / 4).toFixed(0)}
+                            {fmtMoney(result.final_premium / 4, currency)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#F8F9FA' }}>
                           <span className="text-sm" style={{ color: '#7F8C8D' }}>Semi-Annual</span>
                           <span className="font-bold" style={{ color: '#2C3E50' }}>
-                            ${(result.final_premium / 2).toFixed(0)}
+                            {fmtMoney(result.final_premium / 2, currency)}
                           </span>
                         </div>
                       </div>
@@ -572,7 +590,7 @@ export default function PremiumCalculator() {
                             <div key={key} className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: '#D1FAE5' }}>
                               <span className="text-sm" style={{ color: '#2C3E50' }}>{value.reason}</span>
                               <span className="font-medium" style={{ color: '#10B981' }}>
-                                -${value.amount.toFixed(2)}
+                                -{fmtMoney(value.amount, currency)}
                               </span>
                             </div>
                           ))}

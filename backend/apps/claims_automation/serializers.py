@@ -10,7 +10,7 @@ from decimal import Decimal
 
 class ClaimEstimateSerializer(serializers.ModelSerializer):
     """Full serializer for ClaimEstimate model"""
-    
+
     claim_number = serializers.CharField(source='claim.claim_number', read_only=True)
     claim_type = serializers.CharField(source='claim.claim_type', read_only=True)
     claimed_amount = serializers.DecimalField(
@@ -22,7 +22,7 @@ class ClaimEstimateSerializer(serializers.ModelSerializer):
     variance_percentage = serializers.ReadOnlyField()
     is_within_tolerance = serializers.ReadOnlyField()
     needs_review = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = ClaimEstimate
         fields = [
@@ -42,7 +42,7 @@ class ClaimEstimateSerializer(serializers.ModelSerializer):
             'id', 'estimate_number', 'created_at', 'updated_at',
             'variance_percentage', 'is_within_tolerance', 'needs_review'
         ]
-    
+
     def validate_manual_adjustment(self, value):
         """Validate manual adjustment is reasonable"""
         if abs(value) > Decimal('50000.00'):
@@ -54,11 +54,11 @@ class ClaimEstimateSerializer(serializers.ModelSerializer):
 
 class ClaimEstimateListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing estimates"""
-    
+
     claim_number = serializers.CharField(source='claim.claim_number', read_only=True)
     claim_type = serializers.CharField(source='claim.claim_type', read_only=True)
     needs_review = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = ClaimEstimate
         fields = [
@@ -71,23 +71,17 @@ class ClaimEstimateListSerializer(serializers.ModelSerializer):
 
 class ClaimEstimateInputSerializer(serializers.Serializer):
     """Serializer for claim cost estimation input"""
-    
+
     claim_id = serializers.UUIDField(required=True)
-    
+
     # Optional overrides for what-if analysis
     override_severity = serializers.ChoiceField(
         choices=['MINOR', 'MODERATE', 'MAJOR', 'CRITICAL'],
         required=False
     )
-    override_injuries = serializers.IntegerField(
-        min_value=0,
-        required=False
-    )
-    override_vehicles = serializers.IntegerField(
-        min_value=1,
-        required=False
-    )
-    
+    # REMOVED: override_injuries — field deleted from Claim model
+    # REMOVED: override_vehicles — no longer part of what-if analysis
+
     def validate_claim_id(self, value):
         """Validate that claim exists"""
         try:
@@ -99,14 +93,14 @@ class ClaimEstimateInputSerializer(serializers.Serializer):
 
 class ClaimProcessingLogSerializer(serializers.ModelSerializer):
     """Full serializer for ClaimProcessingLog model"""
-    
+
     claim_number = serializers.CharField(source='claim.claim_number', read_only=True)
     estimate_number = serializers.CharField(
         source='estimate.estimate_number',
         read_only=True,
         allow_null=True
     )
-    
+
     class Meta:
         model = ClaimProcessingLog
         fields = [
@@ -120,9 +114,9 @@ class ClaimProcessingLogSerializer(serializers.ModelSerializer):
 
 class ClaimProcessingLogListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing processing logs"""
-    
+
     claim_number = serializers.CharField(source='claim.claim_number', read_only=True)
-    
+
     class Meta:
         model = ClaimProcessingLog
         fields = [
@@ -133,29 +127,29 @@ class ClaimProcessingLogListSerializer(serializers.ModelSerializer):
 
 class ClaimTriageInputSerializer(serializers.Serializer):
     """Serializer for batch claim triage input"""
-    
+
     claim_ids = serializers.ListField(
         child=serializers.UUIDField(),
         min_length=1,
         max_length=100
     )
-    
+
     def validate_claim_ids(self, value):
         """Validate that all claims exist"""
         existing_ids = set(Claim.objects.filter(id__in=value).values_list('id', flat=True))
         invalid_ids = set(value) - existing_ids
-        
+
         if invalid_ids:
             raise serializers.ValidationError(
                 f"Claims not found: {', '.join(str(id) for id in invalid_ids)}"
             )
-        
+
         return value
 
 
 class EstimateUpdateSerializer(serializers.Serializer):
     """Serializer for updating estimate with actual settlement"""
-    
+
     actual_settlement_amount = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -163,7 +157,7 @@ class EstimateUpdateSerializer(serializers.Serializer):
         required=True
     )
     notes = serializers.CharField(required=False, allow_blank=True)
-    
+
     def validate_actual_settlement_amount(self, value):
         """Validate settlement amount is reasonable"""
         if value > Decimal('1000000.00'):

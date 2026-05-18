@@ -1,5 +1,6 @@
 """
 Django Admin Configuration for Dynamic Pricing
+Updated for Pipeline Architecture
 """
 
 from django.contrib import admin
@@ -13,11 +14,11 @@ class QuoteAdmin(admin.ModelAdmin):
     
     list_display = [
         'quote_number', 'policyholder_display', 'vehicle_display',
-        'policy_type', 'coverage_level', 'final_premium_display',
-        'status', 'is_valid', 'created_at'
+        'policy_type', 'coverage_level', 'currency', 'final_premium_display',
+        'status', 'is_valid_display', 'created_at'
     ]
     list_filter = [
-        'status', 'policy_type', 'coverage_level',
+        'status', 'policy_type', 'coverage_level', 'currency',
         'has_roadside_assistance', 'has_rental_coverage',
         'has_glass_coverage', 'created_at'
     ]
@@ -43,14 +44,16 @@ class QuoteAdmin(admin.ModelAdmin):
             )
         }),
         ('Vehicle Information', {
+            # REMOVED vehicle_year, ADDED vehicle_manufacture_year
             'fields': (
-                'vehicle', 'vehicle_year', 'vehicle_make', 'vehicle_model',
+                'vehicle', 'vehicle_manufacture_year', 'vehicle_make', 'vehicle_model',
                 'vehicle_value', 'vehicle_has_anti_theft', 'vehicle_is_modified'
             )
         }),
         ('Policy Details', {
+            # ADDED currency
             'fields': (
-                'policy_type', 'coverage_level', 'coverage_amount', 'deductible'
+                'policy_type', 'coverage_level', 'currency', 'coverage_amount', 'deductible'
             )
         }),
         ('Pricing', {
@@ -74,22 +77,24 @@ class QuoteAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Policyholder')
     def policyholder_display(self, obj):
         """Display policyholder name"""
         if obj.policyholder:
             return obj.policyholder.full_name
         return "New Customer"
-    policyholder_display.short_description = 'Policyholder'
     
+    @admin.display(description='Vehicle')
     def vehicle_display(self, obj):
         """Display vehicle information"""
         if obj.vehicle:
-            return f"{obj.vehicle.year} {obj.vehicle.make} {obj.vehicle.model}"
-        elif obj.vehicle_make and obj.vehicle_model:
-            return f"{obj.vehicle_year} {obj.vehicle_make} {obj.vehicle_model}"
+            # Changed year to manufacture_year
+            return f"{obj.vehicle.manufacture_year} {obj.vehicle.make} {obj.vehicle.model}"
+        elif obj.vehicle_manufacture_year and obj.vehicle_make and obj.vehicle_model:
+            return f"{obj.vehicle_manufacture_year} {obj.vehicle_make} {obj.vehicle_model}"
         return "N/A"
-    vehicle_display.short_description = 'Vehicle'
     
+    @admin.display(description='Final Premium')
     def final_premium_display(self, obj):
         """Display final premium with color coding"""
         color = 'green' if obj.final_premium < 1000 else 'orange' if obj.final_premium < 2000 else 'red'
@@ -98,17 +103,17 @@ class QuoteAdmin(admin.ModelAdmin):
             color,
             obj.final_premium
         )
-    final_premium_display.short_description = 'Final Premium'
     
-    def is_valid(self, obj):
+    @admin.display(description='Valid')
+    def is_valid_display(self, obj):
         """Display validity status"""
         if obj.is_valid:
             return format_html('<span style="color: green;">✓ Valid</span>')
         return format_html('<span style="color: red;">✗ Expired</span>')
-    is_valid.short_description = 'Valid'
     
     actions = ['mark_as_sent', 'mark_as_expired']
     
+    @admin.action(description='Mark selected quotes as sent')
     def mark_as_sent(self, request, queryset):
         """Mark selected quotes as sent"""
         from django.utils import timezone
@@ -117,13 +122,12 @@ class QuoteAdmin(admin.ModelAdmin):
             sent_at=timezone.now()
         )
         self.message_user(request, f'{updated} quotes marked as sent.')
-    mark_as_sent.short_description = 'Mark selected quotes as sent'
     
+    @admin.action(description='Mark selected quotes as expired')
     def mark_as_expired(self, request, queryset):
         """Mark selected quotes as expired"""
         updated = queryset.update(status='EXPIRED')
         self.message_user(request, f'{updated} quotes marked as expired.')
-    mark_as_expired.short_description = 'Mark selected quotes as expired'
 
 
 @admin.register(PriceHistory)
@@ -134,7 +138,7 @@ class PriceHistoryAdmin(admin.ModelAdmin):
         'policy_number_display', 'policyholder_display',
         'previous_premium_display', 'new_premium_display',
         'change_display', 'change_reason', 'effective_from',
-        'is_current', 'created_at'
+        'is_current_display', 'created_at'
     ]
     list_filter = [
         'change_reason', 'effective_from', 'created_at'
@@ -172,28 +176,29 @@ class PriceHistoryAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Policy Number')
     def policy_number_display(self, obj):
         """Display policy number"""
         return obj.policy.policy_number
-    policy_number_display.short_description = 'Policy Number'
     
+    @admin.display(description='Policyholder')
     def policyholder_display(self, obj):
         """Display policyholder name"""
         return obj.policy.policyholder.full_name
-    policyholder_display.short_description = 'Policyholder'
     
+    @admin.display(description='Previous Premium')
     def previous_premium_display(self, obj):
         """Display previous premium"""
         if obj.previous_premium:
             return f"${obj.previous_premium:,.2f}"
         return "N/A"
-    previous_premium_display.short_description = 'Previous Premium'
     
+    @admin.display(description='New Premium')
     def new_premium_display(self, obj):
         """Display new premium"""
         return f"${obj.new_premium:,.2f}"
-    new_premium_display.short_description = 'New Premium'
     
+    @admin.display(description='Change')
     def change_display(self, obj):
         """Display premium change with color coding"""
         if obj.premium_change > 0:
@@ -213,11 +218,10 @@ class PriceHistoryAdmin(admin.ModelAdmin):
             abs(obj.premium_change),
             abs(obj.premium_change_percentage)
         )
-    change_display.short_description = 'Change'
     
-    def is_current(self, obj):
+    @admin.display(description='Current')
+    def is_current_display(self, obj):
         """Display current status"""
         if obj.is_current:
             return format_html('<span style="color: green;">✓ Current</span>')
         return format_html('<span style="color: gray;">○ Historical</span>')
-    is_current.short_description = 'Current'

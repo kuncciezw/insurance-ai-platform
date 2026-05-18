@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import { Settings, Building2, Users, Shield, UserCheck } from 'lucide-react';
+import { Settings, Building2, Users, Shield, UserCheck, DollarSign } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from './notifications/useNotification';
@@ -11,6 +11,7 @@ import CompanyProfileTab from './settings/CompanyProfileTab';
 import UsersTab from './settings/UsersTab';
 import PendingUsersTab from './settings/PendingUsersTab';
 import RolesTab from './settings/RolesTab';
+import CurrencyConversionTab from './settings/CurrencyConversionTab';
 import UserManagementModal from './settings/UserManagementModal';
 import UserApprovalModal from './settings/UserApprovalModal';
 
@@ -18,7 +19,7 @@ export default function SystemSettings() {
   const { user } = useAuth();
   const { showNotification, NotificationContainer } = useNotification();
   const { showConfirm, ConfirmDialog } = useConfirm();
-  
+
   const [activeTab, setActiveTab] = useState('company');
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -30,7 +31,7 @@ export default function SystemSettings() {
   const [editingUser, setEditingUser] = useState(null);
   const [approvingUser, setApprovingUser] = useState(null);
   const [permissions, setPermissions] = useState({});
-  
+
   // Company Profile State
   const [companyProfile, setCompanyProfile] = useState({
     company_name: 'Insurance AI',
@@ -53,31 +54,32 @@ export default function SystemSettings() {
   const [profileChanged, setProfileChanged] = useState(false);
 
   const tabs = [
-    { id: 'company', label: 'Company Profile', icon: Building2 },
-    { id: 'pending', label: 'Pending Users', icon: UserCheck, badge: pendingUsers.length },
-    { id: 'users', label: 'Active Users', icon: Users },
-    { id: 'roles', label: 'Roles & Permissions', icon: Shield },
+    { id: 'company',   label: 'Company Profile',     icon: Building2 },
+    { id: 'currency',  label: 'Currency Settings',    icon: DollarSign },
+    { id: 'pending',   label: 'Pending Users',        icon: UserCheck, badge: pendingUsers.length },
+    { id: 'users',     label: 'Active Users',         icon: Users },
+    { id: 'roles',     label: 'Roles & Permissions',  icon: Shield },
   ];
 
   const permissionsList = [
-    { id: 'can_manage_users', label: 'Manage Users' },
-    { id: 'can_view_policyholders', label: 'View Policyholders' },
+    { id: 'can_manage_users',         label: 'Manage Users' },
+    { id: 'can_view_policyholders',   label: 'View Policyholders' },
     { id: 'can_create_policyholders', label: 'Create Policyholders' },
-    { id: 'can_edit_policyholders', label: 'Edit Policyholders' },
+    { id: 'can_edit_policyholders',   label: 'Edit Policyholders' },
     { id: 'can_delete_policyholders', label: 'Delete Policyholders' },
-    { id: 'can_view_policies', label: 'View Policies' },
-    { id: 'can_create_policies', label: 'Create Policies' },
-    { id: 'can_edit_policies', label: 'Edit Policies' },
-    { id: 'can_delete_policies', label: 'Delete Policies' },
-    { id: 'can_view_claims', label: 'View Claims' },
-    { id: 'can_process_claims', label: 'Process Claims' },
-    { id: 'can_approve_claims', label: 'Approve Claims' },
-    { id: 'can_delete_claims', label: 'Delete Claims' },
-    { id: 'can_use_fraud_detection', label: 'Use Fraud Detection' },
-    { id: 'can_flag_fraud', label: 'Flag Fraud' },
-    { id: 'can_calculate_premium', label: 'Calculate Premium' },
-    { id: 'can_estimate_claims', label: 'Estimate Claims' },
-    { id: 'can_export_reports', label: 'Export Reports' },
+    { id: 'can_view_policies',        label: 'View Policies' },
+    { id: 'can_create_policies',      label: 'Create Policies' },
+    { id: 'can_edit_policies',        label: 'Edit Policies' },
+    { id: 'can_delete_policies',      label: 'Delete Policies' },
+    { id: 'can_view_claims',          label: 'View Claims' },
+    { id: 'can_process_claims',       label: 'Process Claims' },
+    { id: 'can_approve_claims',       label: 'Approve Claims' },
+    { id: 'can_delete_claims',        label: 'Delete Claims' },
+    { id: 'can_use_fraud_detection',  label: 'Use Fraud Detection' },
+    { id: 'can_flag_fraud',           label: 'Flag Fraud' },
+    { id: 'can_calculate_premium',    label: 'Calculate Premium' },
+    { id: 'can_estimate_claims',      label: 'Estimate Claims' },
+    { id: 'can_export_reports',       label: 'Export Reports' },
   ];
 
   useEffect(() => {
@@ -90,20 +92,23 @@ export default function SystemSettings() {
     } else if (activeTab === 'roles') {
       fetchRolesAndPermissions();
     }
+    // 'currency' tab is self-contained — no fetch needed
   }, [activeTab]);
 
-  // Auto-refresh pending users count
+  // Auto-refresh pending users count every minute
   useEffect(() => {
     fetchPendingUsers();
-    const interval = setInterval(fetchPendingUsers, 60000); // Refresh every minute
+    const interval = setInterval(fetchPendingUsers, 60000);
     return () => clearInterval(interval);
   }, []);
 
-  // Check if profile has changed
+  // Detect unsaved company profile changes
   useEffect(() => {
     const changed = JSON.stringify(companyProfile) !== JSON.stringify(originalProfile);
     setProfileChanged(changed);
   }, [companyProfile, originalProfile]);
+
+  // ── Data fetchers ──────────────────────────────────────────────────
 
   const fetchCompanyProfile = async () => {
     try {
@@ -122,8 +127,7 @@ export default function SystemSettings() {
     try {
       setLoading(true);
       const data = await api.getUsers();
-      // Filter only active users (is_active = true)
-      const activeUsers = (data.results || data).filter(u => u.is_active);
+      const activeUsers = (data.results || data).filter((u) => u.is_active);
       setUsers(activeUsers);
     } catch (err) {
       showNotification('Failed to load users: ' + err.message, 'error');
@@ -135,8 +139,7 @@ export default function SystemSettings() {
   const fetchPendingUsers = async () => {
     try {
       const data = await api.getUsers();
-      // Filter only inactive/pending users (is_active = false)
-      const pending = (data.results || data).filter(u => !u.is_active);
+      const pending = (data.results || data).filter((u) => !u.is_active);
       setPendingUsers(pending);
     } catch (err) {
       console.error('Failed to load pending users:', err);
@@ -147,20 +150,15 @@ export default function SystemSettings() {
     try {
       setLoading(true);
       const data = await api.getRoles();
-      
-      if (data.roles) {
-        setPermissions(data.roles);
-      }
-      if (data.permission_list) {
-        // Optional: update permissionsList if backend provides it
-      }
+      if (data.roles) setPermissions(data.roles);
     } catch (err) {
       showNotification('Failed to load roles and permissions: ' + err.message, 'error');
-      console.error('Fetch roles error:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Handlers ──────────────────────────────────────────────────────
 
   const handleSaveCompanyProfile = async () => {
     try {
@@ -175,9 +173,7 @@ export default function SystemSettings() {
     }
   };
 
-  const handleResetCompanyProfile = () => {
-    setCompanyProfile(originalProfile);
-  };
+  const handleResetCompanyProfile = () => setCompanyProfile(originalProfile);
 
   const handleAddUser = () => {
     setEditingUser(null);
@@ -195,9 +191,8 @@ export default function SystemSettings() {
       message: 'Are you sure you want to delete this user? This action cannot be undone.',
       type: 'danger',
       confirmText: 'Delete User',
-      cancelText: 'Cancel'
+      cancelText: 'Cancel',
     });
-
     if (!confirmed) return;
 
     try {
@@ -212,10 +207,8 @@ export default function SystemSettings() {
   const handleSaveUser = async (formData) => {
     try {
       setLoading(true);
-
       if (editingUser) {
         const updateData = { ...formData };
-        // Remove password fields if not changing password
         if (!updateData.password) {
           delete updateData.password;
           delete updateData.password_confirm;
@@ -229,11 +222,12 @@ export default function SystemSettings() {
       setShowUserModal(false);
       fetchUsers();
     } catch (err) {
-      const errorMessage = err.data?.password_confirm?.[0] || 
-                          err.data?.username?.[0] || 
-                          err.data?.email?.[0] || 
-                          err.message || 
-                          'Failed to save user';
+      const errorMessage =
+        err.data?.password_confirm?.[0] ||
+        err.data?.username?.[0] ||
+        err.data?.email?.[0] ||
+        err.message ||
+        'Failed to save user';
       showNotification(errorMessage, 'error');
     } finally {
       setLoading(false);
@@ -248,13 +242,7 @@ export default function SystemSettings() {
   const handleApproveConfirm = async (userId, role) => {
     try {
       setLoading(true);
-      
-      // Update user with approved role and activate
-      await api.updateUser(userId, {
-        role: role,
-        is_active: true
-      });
-      
+      await api.updateUser(userId, { role, is_active: true });
       showNotification('User approved and activated successfully', 'success');
       setShowApprovalModal(false);
       fetchPendingUsers();
@@ -269,12 +257,12 @@ export default function SystemSettings() {
   const handleRejectUser = async (userId) => {
     const confirmed = await showConfirm({
       title: 'Reject User Application',
-      message: 'Are you sure you want to reject this application? This will permanently delete the user account.',
+      message:
+        'Are you sure you want to reject this application? This will permanently delete the user account.',
       type: 'danger',
       confirmText: 'Reject Application',
-      cancelText: 'Cancel'
+      cancelText: 'Cancel',
     });
-
     if (!confirmed) return;
 
     try {
@@ -286,19 +274,20 @@ export default function SystemSettings() {
     }
   };
 
-  const handlePermissionsRefresh = () => {
-    fetchRolesAndPermissions();
-  };
+  const handlePermissionsRefresh = () => fetchRolesAndPermissions();
+
+  // ── Render ────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar activePath="/settings" />
-      
+
       <NotificationContainer />
       <ConfirmDialog />
-      
+
       <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F8F9FA' }}>
         <div className="p-8">
+
           {/* Page Title */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center">
@@ -362,6 +351,10 @@ export default function SystemSettings() {
                 />
               )}
 
+              {activeTab === 'currency' && (
+                <CurrencyConversionTab companyProfile={companyProfile} />
+              )}
+
               {activeTab === 'pending' && (
                 <PendingUsersTab
                   pendingUsers={pendingUsers}
@@ -399,6 +392,7 @@ export default function SystemSettings() {
               )}
             </div>
           </div>
+
         </div>
       </div>
 

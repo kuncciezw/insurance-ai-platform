@@ -76,6 +76,7 @@ class ClaimEstimateAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Claim Number')
     def claim_number_link(self, obj):
         """Display claim number as link"""
         return format_html(
@@ -83,17 +84,16 @@ class ClaimEstimateAdmin(admin.ModelAdmin):
             obj.claim.id,
             obj.claim.claim_number
         )
-    claim_number_link.short_description = 'Claim Number'
     
+    @admin.display(description='Estimated Cost', ordering='estimated_cost')
     def estimated_cost_display(self, obj):
         """Display estimated cost with formatting"""
         return format_html(
             '<strong>${:,.2f}</strong>',
             obj.estimated_cost
         )
-    estimated_cost_display.short_description = 'Estimated Cost'
-    estimated_cost_display.admin_order_field = 'estimated_cost'
     
+    @admin.display(description='Severity', ordering='predicted_severity')
     def predicted_severity_badge(self, obj):
         """Display severity with color badge"""
         colors = {
@@ -109,9 +109,8 @@ class ClaimEstimateAdmin(admin.ModelAdmin):
             color,
             obj.predicted_severity
         )
-    predicted_severity_badge.short_description = 'Severity'
-    predicted_severity_badge.admin_order_field = 'predicted_severity'
     
+    @admin.display(description='Priority', ordering='triage_priority')
     def triage_priority_badge(self, obj):
         """Display priority with color badge"""
         colors = {
@@ -127,9 +126,8 @@ class ClaimEstimateAdmin(admin.ModelAdmin):
             color,
             obj.triage_priority
         )
-    triage_priority_badge.short_description = 'Priority'
-    triage_priority_badge.admin_order_field = 'triage_priority'
     
+    @admin.display(description='Confidence', ordering='confidence_score')
     def confidence_display(self, obj):
         """Display confidence score with percentage"""
         percentage = obj.confidence_score * 100
@@ -139,8 +137,6 @@ class ClaimEstimateAdmin(admin.ModelAdmin):
             color,
             percentage
         )
-    confidence_display.short_description = 'Confidence'
-    confidence_display.admin_order_field = 'confidence_score'
     
     def get_queryset(self, request):
         """Optimize queryset with select_related"""
@@ -205,6 +201,7 @@ class ClaimProcessingLogAdmin(admin.ModelAdmin):
         """Disable deletion of logs"""
         return False
     
+    @admin.display(description='Claim Number')
     def claim_number_link(self, obj):
         """Display claim number as link"""
         return format_html(
@@ -212,8 +209,8 @@ class ClaimProcessingLogAdmin(admin.ModelAdmin):
             obj.claim.id,
             obj.claim.claim_number
         )
-    claim_number_link.short_description = 'Claim Number'
     
+    @admin.display(description='Action', ordering='action_type')
     def action_type_badge(self, obj):
         """Display action type with badge"""
         colors = {
@@ -234,9 +231,8 @@ class ClaimProcessingLogAdmin(admin.ModelAdmin):
             color,
             obj.action_type.replace('_', ' ')
         )
-    action_type_badge.short_description = 'Action'
-    action_type_badge.admin_order_field = 'action_type'
     
+    @admin.display(description='Type', ordering='is_automated')
     def is_automated_icon(self, obj):
         """Display automated status with icon"""
         if obj.is_automated:
@@ -246,9 +242,8 @@ class ClaimProcessingLogAdmin(admin.ModelAdmin):
         return format_html(
             '<span style="color: #007bff; font-size: 16px;" title="Manual">👤</span>'
         )
-    is_automated_icon.short_description = 'Type'
-    is_automated_icon.admin_order_field = 'is_automated'
     
+    @admin.display(description='Processing Time', ordering='processing_time_ms')
     def processing_time_display(self, obj):
         """Display processing time"""
         if obj.processing_time_ms:
@@ -263,8 +258,6 @@ class ClaimProcessingLogAdmin(admin.ModelAdmin):
                     obj.processing_time_ms / 1000
                 )
         return '-'
-    processing_time_display.short_description = 'Processing Time'
-    processing_time_display.admin_order_field = 'processing_time_ms'
     
     def get_queryset(self, request):
         """Optimize queryset with select_related"""

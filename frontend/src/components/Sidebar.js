@@ -4,16 +4,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import {
   LayoutDashboard,
-  Users,
-  Car,
+  UserPlus,
   FileText,
   AlertTriangle,
-  Calculator,
-  ClipboardList,
+  ClipboardCheck,
   LogOut,
-  DollarSign,
   Settings,
-  Shield,
+  DollarSign,
 } from 'lucide-react';
 
 export default function Sidebar({ activePath }) {
@@ -32,10 +29,9 @@ export default function Sidebar({ activePath }) {
       const data = await api.getCompanyProfile();
       setCompanyProfile(data);
     } catch (err) {
-      console.error('Failed to load company profile:', err);
       setCompanyProfile({
-        company_name: 'Insurance AI',
-        company_tagline: 'Admin Portal',
+        company_name: 'Zimbabwe Insurance AI',
+        company_tagline: 'Intelligent Operations',
         primary_color: '#FF6B4A',
         secondary_color: '#2C3E50',
       });
@@ -51,102 +47,74 @@ export default function Sidebar({ activePath }) {
     }
   };
 
-  // Define menu items with CORRECT permission requirements
   const allMenuItems = [
     { 
       name: 'Dashboard', 
       icon: LayoutDashboard, 
       path: '/dashboard',
-      // No permission needed - everyone can see dashboard
     },
     { 
-      name: 'Policyholders', 
-      icon: Users, 
-      path: '/policyholders',
-      permission: 'can_view_policyholders'
+      name: 'New Registration', 
+      icon: UserPlus, 
+      path: '/onboarding',
+      permission: 'can_create_policyholders'
     },
     { 
-      name: 'Vehicles', 
-      icon: Car, 
-      path: '/vehicles',
-      permission: 'can_view_vehicles'
-    },
-    { 
-      name: 'Policies', 
+      name: 'Policy Issuance', 
       icon: FileText, 
       path: '/policies',
       permission: 'can_view_policies'
     },
     { 
-      name: 'Claims', 
-      icon: ClipboardList, 
+      name: 'Claims Management', 
+      icon: ClipboardCheck, 
       path: '/claims',
       permission: 'can_view_claims'
     },
     { 
-      name: 'Fraud Detection', 
+      name: 'Fraud Analytics', 
       icon: AlertTriangle, 
       path: '/fraud-detection',
       permission: 'can_view_fraud_detection'
     },
     { 
       name: 'Premium Calculator', 
-      icon: Calculator, 
-      path: '/premium-calculator',
-      permission: 'can_calculate_premium'
-    },
-    { 
-      name: 'Claims Estimator', 
       icon: DollarSign, 
-      path: '/claims-estimator',
-      permission: 'can_estimate_claims'
+      path: '/premium-calculator',
+      roles: ['SUPER_ADMIN', 'ADMIN', 'UNDERWRITER']
     },
     { 
       name: 'System Settings', 
       icon: Settings, 
       path: '/settings',
-      // Only admins can access settings (includes user management)
       permission: 'can_manage_users'
     },
   ];
 
-  // Filter menu items based on user permissions and roles
   const menuItems = allMenuItems.filter(item => {
-    // Items with no permission requirement are visible to all
-    if (!item.permission && !item.roles) {
-      return true;
-    }
-
-    // Check role-based access
-    if (item.roles) {
-      return hasRole(item.roles);
-    }
-
-    // Check permission-based access
-    if (item.permission) {
-      return hasPermission(item.permission);
-    }
-
+    if (!item.permission && !item.roles) return true;
+    if (item.roles) return hasRole(item.roles);
+    if (item.permission) return hasPermission(item.permission);
     return false;
   });
 
   const currentPath = activePath || location.pathname;
-
   const primaryColor = companyProfile?.primary_color || '#FF6B4A';
   const secondaryColor = companyProfile?.secondary_color || '#2C3E50';
 
   return (
-    <div className="w-64 shadow-lg" style={{ backgroundColor: secondaryColor }}>
+    <div className="w-64 min-h-screen shadow-lg flex flex-col shrink-0 overflow-y-auto" style={{ backgroundColor: secondaryColor }}>
       <div className="p-6">
-        <h1 className="text-xl font-bold text-white">
+        <h1 className="text-xl font-bold text-white uppercase tracking-wider">
           {companyProfile?.company_name || 'Insurance AI'}
         </h1>
-        <p className="text-sm mt-1" style={{ color: '#BDC3C7' }}>
+        <div className="h-1 w-12 mt-1" style={{ backgroundColor: primaryColor }}></div>
+        <p className="text-xs mt-2 font-medium" style={{ color: '#BDC3C7' }}>
           {companyProfile?.company_tagline || 'Admin Portal'}
         </p>
       </div>
 
-      <nav className="mt-6">
+      <nav className="mt-4 flex-grow">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentPath === item.path;
@@ -154,60 +122,41 @@ export default function Sidebar({ activePath }) {
             <Link
               key={item.path}
               to={item.path}
-              className="flex items-center px-6 py-3 transition-colors"
+              className="flex items-center px-6 py-4 transition-all duration-200 border-l-4"
               style={{
-                backgroundColor: isActive ? primaryColor : 'transparent',
+                backgroundColor: isActive ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
                 color: isActive ? 'white' : '#BDC3C7',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = '#34495E';
-                  e.currentTarget.style.color = 'white';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#BDC3C7';
-                }
+                borderColor: isActive ? primaryColor : 'transparent'
               }}
             >
-              <Icon className="w-5 h-5 mr-3" />
-              {item.name}
+              <Icon className="w-5 h-5 mr-4" />
+              <span className="text-sm font-semibold">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="absolute bottom-0 w-64 p-6 border-t" style={{ borderColor: '#34495E' }}>
-        <div className="flex items-center mb-4">
+      <div className="p-6 border-t mt-auto" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+        <div className="flex items-center mb-6">
           <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+            className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold shadow-md shrink-0"
             style={{ backgroundColor: primaryColor }}
           >
             {user?.first_name?.[0] || user?.username?.[0] || 'U'}
           </div>
-          <div className="ml-3">
-            <p className="text-white text-sm font-medium">
-              {user?.first_name && user?.last_name
-                ? `${user.first_name} ${user.last_name}`
-                : user?.username || 'User'}
+          <div className="ml-3 overflow-hidden">
+            <p className="text-white text-sm font-bold truncate">
+              {user?.first_name ? `${user.first_name} ${user.last_name}` : user?.username}
             </p>
-            <p className="text-xs" style={{ color: '#BDC3C7' }}>
-              {user?.role_display || user?.role || 'User'}
+            <p className="text-[10px] uppercase tracking-tighter" style={{ color: primaryColor }}>
+              {user?.role_display || user?.role}
             </p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center px-4 py-2 rounded-lg transition-colors"
+          className="w-full flex items-center justify-center px-4 py-2.5 rounded-lg text-sm font-bold transition-all hover:opacity-90"
           style={{ backgroundColor: '#34495E', color: 'white' }}
-          onMouseEnter={(e) => {
-            e.target.style.backgroundColor = primaryColor;
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.backgroundColor = '#34495E';
-          }}
         >
           <LogOut className="w-4 h-4 mr-2" />
           Logout

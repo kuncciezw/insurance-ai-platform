@@ -1,5 +1,9 @@
 from django.apps import AppConfig
-
-
+ 
+ 
 class FraudDetectionConfig(AppConfig):
-    name = 'apps.fraud_detection'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.fraud_detection"
+ 
+    def ready(self):
+        import apps.fraud_detection.signals  

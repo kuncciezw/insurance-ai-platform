@@ -1,12 +1,6 @@
-"""
-Django management command to create a super admin user
-Run with: python manage.py create_superadmin
-"""
-
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from apps.dashboard.models import UserProfile
-
 
 class Command(BaseCommand):
     help = 'Creates a super admin user for the insurance system'
@@ -23,14 +17,18 @@ class Command(BaseCommand):
             )
             user = User.objects.get(username=username)
             
-            # Update to ensure they have super admin role
-            if hasattr(user, 'profile'):
-                user.profile.role = 'SUPER_ADMIN'
-                user.profile.is_active = True
-                user.profile.save()
+            # Fetch profile explicitly to satisfy Pylance
+            try:
+                profile = UserProfile.objects.get(user=user)
+                profile.role = 'SUPER_ADMIN'
+                profile.is_active = True
+                profile.save()
                 self.stdout.write(
                     self.style.SUCCESS(f'Updated "{username}" to SUPER_ADMIN role')
                 )
+            except UserProfile.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f'Profile for {username} does not exist.'))
+
         else:
             # Create new user
             user = User.objects.create_user(
@@ -44,19 +42,23 @@ class Command(BaseCommand):
             )
             
             # Update profile (created automatically via signal)
-            # Note: employee_id will be auto-generated
-            user.profile.role = 'SUPER_ADMIN'
-            user.profile.is_active = True
-            user.profile.save()
+            # Fetch explicitly to satisfy Pylance
+            profile = UserProfile.objects.get(user=user)
+            profile.role = 'SUPER_ADMIN'
+            profile.is_active = True
+            profile.save()
             
             self.stdout.write(
                 self.style.SUCCESS(f'Successfully created super admin: "{username}"')
             )
         
+        # Get the profile one last time for the display output
+        profile = UserProfile.objects.get(user=user)
+
         self.stdout.write(self.style.SUCCESS('\n=== Super Admin Details ==='))
         self.stdout.write(f'Username: {username}')
         self.stdout.write(f'Password: {password}')
         self.stdout.write(f'Email: {email}')
-        self.stdout.write(f'Role: {user.profile.get_role_display()}')
-        self.stdout.write(f'Employee ID: {user.profile.employee_id}')
+        self.stdout.write(f'Role: {profile.role}')
+        self.stdout.write(f'Employee ID: {profile.employee_id}')
         self.stdout.write(self.style.SUCCESS('===========================\n'))

@@ -1,5 +1,6 @@
 """
 API ViewSets for Fraud Detection Application
+Updated with corrected filter fields
 """
 
 from rest_framework import viewsets, status, filters
@@ -29,9 +30,9 @@ class PolicyholderViewSet(viewsets.ModelViewSet):
     """
     queryset = Policyholder.objects.all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['gender', 'marital_status', 'occupation', 'is_active', 'state', 'city']
+    filterset_fields = ['gender', 'marital_status', 'occupation', 'is_active', 'state', 'city', 'credit_rating']
     search_fields = ['first_name', 'last_name', 'email', 'policy_holder_id', 'phone_number']
-    ordering_fields = ['created_at', 'last_name', 'credit_score', 'annual_income']
+    ordering_fields = ['created_at', 'last_name', 'credit_score', 'monthly_income']
     ordering = ['-created_at']
     
     def get_serializer_class(self):
@@ -95,7 +96,9 @@ class PolicyholderViewSet(viewsets.ModelViewSet):
         """Get policyholders with high-risk indicators"""
         high_risk_holders = Policyholder.objects.filter(
             Q(credit_score__lt=600) | 
-            Q(claims__is_fraudulent=True)
+            Q(claims__is_fraudulent=True) |
+            Q(has_driving_license=False) |
+            Q(is_medical_license_valid=False)
         ).distinct()
         
         serializer = self.get_serializer(high_risk_holders, many=True)
@@ -108,9 +111,10 @@ class VehicleViewSet(viewsets.ModelViewSet):
     """
     queryset = Vehicle.objects.select_related('policyholder').all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['vehicle_type', 'fuel_type', 'year', 'make', 'has_anti_theft', 'is_modified']
-    search_fields = ['vehicle_id', 'vin', 'registration_number', 'make', 'model']
-    ordering_fields = ['created_at', 'year', 'market_value', 'odometer_reading']
+    # Updated filterset_fields - removed 'vehicle_id', changed 'year' to 'manufacture_year'
+    filterset_fields = ['vehicle_type', 'fuel_type', 'manufacture_year', 'make', 'has_anti_theft', 'is_modified']
+    search_fields = ['vin', 'registration_number', 'make', 'model']
+    ordering_fields = ['created_at', 'manufacture_year', 'market_value', 'odometer_reading']
     ordering = ['-created_at']
     permission_classes = [IsAuthenticated]
     
@@ -157,7 +161,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
     """
     queryset = Policy.objects.select_related('policyholder', 'vehicle').all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'policy_type', 'coverage_level']
+    filterset_fields = ['status', 'policy_type', 'coverage_level', 'currency']
     search_fields = ['policy_number', 'policyholder__first_name', 'policyholder__last_name']
     ordering_fields = ['created_at', 'start_date', 'end_date', 'premium_amount']
     ordering = ['-created_at']
@@ -218,9 +222,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             policy_type=policy.policy_type,
             coverage_level=policy.coverage_level,
             status='PENDING',
-            premium_amount=policy.premium_amount,
-            coverage_amount=policy.coverage_amount,
-            deductible=policy.deductible,
+            currency=policy.currency,
             start_date=policy.end_date,
             end_date=policy.end_date + timedelta(days=365),
             has_roadside_assistance=policy.has_roadside_assistance,
@@ -259,12 +261,12 @@ class ClaimViewSet(viewsets.ModelViewSet):
     """
     queryset = Claim.objects.select_related('policy', 'policyholder', 'vehicle').all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    # Updated filterset_fields - removed fields that no longer exist
     filterset_fields = [
-        'claim_status', 'claim_type', 'severity', 'is_fraudulent',
-        'police_report_filed', 'third_party_involved'
+        'claim_status', 'claim_type', 'severity', 'is_fraudulent', 'payment_method'
     ]
     search_fields = [
-        'claim_number', 'incident_description', 
+        'claim_number', 
         'policyholder__first_name', 'policyholder__last_name'
     ]
     ordering_fields = [
@@ -424,7 +426,8 @@ class ClaimViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(recent_claims, many=True)
         return Response(serializer.data)
-    
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def fraud_statistics_chart(request):

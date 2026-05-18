@@ -1,512 +1,555 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Search, Loader2, CheckCircle2, ChevronDown, Upload, FileText, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function AddEditClaimModal({ isOpen, onClose, onSuccess, editingClaim = null }) {
-  const [policies, setPolicies] = useState([]);
-  const [formData, setFormData] = useState({
-    claim_number: '',
-    policy: '',
-    policyholder: '',
-    vehicle: '',
-    claim_type: 'ACCIDENT',
-    claim_status: 'SUBMITTED',
-    severity: 'MINOR',
-    incident_date: '',
-    incident_location: '',
-    incident_description: '',
-    police_report_filed: false,
-    police_report_number: '',
-    witnesses_present: false,
-    number_of_witnesses: 0,
-    number_of_vehicles_involved: 1,
-    number_of_injuries: 0,
-    third_party_involved: false,
-    claimed_amount: '',
-    approved_amount: '',
-    paid_amount: '',
-  });
+const CLAIM_TYPES = [
+  { value: 'ACCIDENT',         label: 'Accident' },
+  { value: 'THEFT',            label: 'Theft' },
+  { value: 'VANDALISM',        label: 'Vandalism' },
+  { value: 'NATURAL_DISASTER', label: 'Natural Disaster' },
+  { value: 'FIRE',             label: 'Fire' },
+  { value: 'OTHER',            label: 'Other' },
+];
 
+const SEVERITIES = [
+  { value: 'MINOR',      label: 'Minor' },
+  { value: 'MODERATE',   label: 'Moderate' },
+  { value: 'MAJOR',      label: 'Major' },
+  { value: 'TOTAL_LOSS', label: 'Total Loss' },
+];
+
+const PAYMENT_METHODS = [
+  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+  { value: 'SWIPE',         label: 'Swipe Card' },
+  { value: 'ECOCASH',       label: 'EcoCash' },
+  { value: 'CASH',          label: 'Cash' },
+];
+
+const todayISO = () => new Date().toISOString().slice(0, 16);
+
+const blankForm = () => ({
+  policy:           '',
+  claim_type:       'ACCIDENT',
+  severity:         'MINOR',
+  incident_date:    '',
+  incident_location:'',
+  payment_method:   'BANK_TRANSFER',
+});
+
+export default function AddEditClaimModal({ isOpen, onClose, onSuccess, editingClaim = null }) {
+  const [formData,        setFormData]        = useState(blankForm());
+  const [evidenceFile,    setEvidenceFile]     = useState(null);
+  const [existingEvidence,setExistingEvidence] = useState(null);
+  const [isSaving,        setIsSaving]         = useState(false);
+  const [errors,          setErrors]           = useState({});
+
+  // Policy searchable select
+  const [policySearch,    setPolicySearch]     = useState('');
+  const [policyOptions,   setPolicyOptions]    = useState([]);
+  const [showPolicyDrop,  setShowPolicyDrop]   = useState(false);
+  const [policySearching, setPolicySearching]  = useState(false);
+  const [selectedPolicy,  setSelectedPolicy]   = useState(null);
+
+  const policyRef    = useRef(null);
+  const fileInputRef = useRef(null);
+  const debounceRef  = useRef(null);
+
+  // ── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
-    if (isOpen) {
-      fetchPolicies();
-      if (editingClaim) {
-        loadClaimData(editingClaim);
-      } else {
-        resetForm();
-      }
+    const handler = (e) => {
+      if (policyRef.current && !policyRef.current.contains(e.target))
+        setShowPolicyDrop(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // ── Reset / Load on open ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+    if (editingClaim) {
+      loadClaimData(editingClaim);
+    } else {
+      resetForm();
     }
   }, [isOpen, editingClaim]);
 
-  const fetchPolicies = async () => {
-    try {
-      const data = await api.getPolicies();
-      setPolicies(data.results || data);
-    } catch (err) {
-      console.error('Failed to fetch policies:', err);
-    }
-  };
-
-  const loadClaimData = (claim) => {
+  const loadClaimData = async (claim) => {
     setFormData({
-      claim_number: claim.claim_number || '',
-      policy: claim.policy,
-      policyholder: claim.policyholder,
-      vehicle: claim.vehicle,
-      claim_type: claim.claim_type || 'ACCIDENT',
-      claim_status: claim.claim_status || 'SUBMITTED',
-      severity: claim.severity || 'MINOR',
-      incident_date: claim.incident_date ? claim.incident_date.split('T')[0] : '',
+      policy:            claim.policy         || '',
+      claim_type:        claim.claim_type     || 'ACCIDENT',
+      severity:          claim.severity       || 'MINOR',
+      incident_date:     claim.incident_date
+                           ? claim.incident_date.slice(0, 16)
+                           : '',
       incident_location: claim.incident_location || '',
-      incident_description: claim.incident_description || '',
-      police_report_filed: claim.police_report_filed || false,
-      police_report_number: claim.police_report_number || '',
-      witnesses_present: claim.witnesses_present || false,
-      number_of_witnesses: claim.number_of_witnesses || 0,
-      number_of_vehicles_involved: claim.number_of_vehicles_involved || 1,
-      number_of_injuries: claim.number_of_injuries || 0,
-      third_party_involved: claim.third_party_involved || false,
-      claimed_amount: claim.claimed_amount || '',
-      approved_amount: claim.approved_amount || '',
-      paid_amount: claim.paid_amount || '',
+      payment_method:    claim.payment_method    || 'BANK_TRANSFER',
     });
+    setExistingEvidence(claim.incident_evidence || null);
+
+    if (claim.policy) {
+      try {
+        const pol = await api.getPolicy(claim.policy);
+        setSelectedPolicy(pol);
+        setPolicySearch(pol.policy_number || '');
+      } catch {
+        setSelectedPolicy({
+          id:               claim.policy,
+          policy_number:    claim.policy_number    || 'Policy',
+          policyholder_name: claim.policyholder_name || '',
+          vehicle_display:  claim.vehicle_display  || '',
+        });
+        setPolicySearch(claim.policy_number || '');
+      }
+    }
   };
 
   const resetForm = () => {
-    setFormData({
-      claim_number: '',
-      policy: '',
-      policyholder: '',
-      vehicle: '',
-      claim_type: 'ACCIDENT',
-      claim_status: 'SUBMITTED',
-      severity: 'MINOR',
-      incident_date: '',
-      incident_location: '',
-      incident_description: '',
-      police_report_filed: false,
-      police_report_number: '',
-      witnesses_present: false,
-      number_of_witnesses: 0,
-      number_of_vehicles_involved: 1,
-      number_of_injuries: 0,
-      third_party_involved: false,
-      claimed_amount: '',
-      approved_amount: '',
-      paid_amount: '',
-    });
+    setFormData(blankForm());
+    setEvidenceFile(null);
+    setExistingEvidence(null);
+    setSelectedPolicy(null);
+    setPolicySearch('');
+    setPolicyOptions([]);
+    setErrors({});
   };
 
-  const handlePolicyChange = async (policyId) => {
-    if (!policyId) {
-      setFormData({
-        ...formData,
-        policy: '',
-        policyholder: '',
-        vehicle: '',
-      });
-      return;
-    }
+  // ── Debounced policy search ───────────────────────────────────────────────
+  useEffect(() => {
+    if (selectedPolicy) return;
+    clearTimeout(debounceRef.current);
 
-    try {
-      const policyDetails = await api.getPolicy(policyId);
-      console.log('📋 Selected Policy Details:', policyDetails);
-      
-      setFormData({
-        ...formData,
-        policy: policyId,
-        policyholder: policyDetails.policyholder,
-        vehicle: policyDetails.vehicle,
-      });
-      
-      console.log('✅ Auto-filled policyholder:', policyDetails.policyholder);
-      console.log('✅ Auto-filled vehicle:', policyDetails.vehicle);
-    } catch (err) {
-      console.error('Failed to fetch policy details:', err);
-      const selectedPolicy = policies.find(p => p.id === policyId);
-      if (selectedPolicy) {
-        setFormData({
-          ...formData,
-          policy: policyId,
-          policyholder: selectedPolicy.policyholder,
-          vehicle: selectedPolicy.vehicle,
-        });
+    debounceRef.current = setTimeout(async () => {
+      setPolicySearching(true);
+      try {
+        const params = policySearch.length > 0
+          ? { search: policySearch, page_size: 20 }
+          : { page_size: 30 };
+        const data = await api.getPolicies(params);
+        setPolicyOptions(data.results || data);
+      } catch {
+        setPolicyOptions([]);
+      } finally {
+        setPolicySearching(false);
       }
-    }
+    }, policySearch.length > 0 ? 350 : 100);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [policySearch, selectedPolicy]);
+
+  const applyPolicy = (pol) => {
+    setSelectedPolicy(pol);
+    setPolicySearch(pol.policy_number || '');
+    setFormData((prev) => ({ ...prev, policy: String(pol.id) }));
+    setShowPolicyDrop(false);
+    setErrors((prev) => ({ ...prev, policy: undefined }));
   };
 
+  const clearPolicy = () => {
+    setSelectedPolicy(null);
+    setPolicySearch('');
+    setPolicyOptions([]);
+    setFormData((prev) => ({ ...prev, policy: '' }));
+  };
+
+  // ── File handling ─────────────────────────────────────────────────────────
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setEvidenceFile(file);
+    if (file) setErrors((prev) => ({ ...prev, incident_evidence: undefined }));
+  };
+
+  // ── Validation ────────────────────────────────────────────────────────────
+  const validate = () => {
+    const errs = {};
+    if (!formData.policy)                   errs.policy            = 'Please select a policy.';
+    if (!formData.incident_date)            errs.incident_date     = 'Incident date is required.';
+    if (!formData.incident_location.trim()) errs.incident_location = 'Location is required.';
+    return errs;
+  };
+
+  // ── Submit via FormData ───────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+
+    setIsSaving(true);
     try {
-      const submitData = {
-        policy: formData.policy,
-        policyholder: formData.policyholder,
-        vehicle: formData.vehicle,
-        claim_type: formData.claim_type,
-        claim_status: formData.claim_status || 'SUBMITTED',
-        severity: formData.severity,
-        incident_date: formData.incident_date,
-        incident_location: formData.incident_location,
-        incident_description: formData.incident_description,
-        police_report_filed: formData.police_report_filed,
-        police_report_number: formData.police_report_number || '',
-        witnesses_present: formData.witnesses_present,
-        number_of_witnesses: formData.number_of_witnesses,
-        number_of_vehicles_involved: formData.number_of_vehicles_involved,
-        number_of_injuries: formData.number_of_injuries,
-        third_party_involved: formData.third_party_involved,
-        claimed_amount: formData.claimed_amount,
-        approved_amount: formData.approved_amount || '0.00',
-        paid_amount: formData.paid_amount || '0.00',
-      };
+      const fd = new FormData();
 
-      // Generate a short claim number (max 20 chars): CLM-XXXXXXXXXX
-      submitData.claim_number = editingClaim 
-        ? formData.claim_number 
-        : `CLM-${Date.now().toString().slice(-10)}`;
+      fd.append('policy',            formData.policy);
+      fd.append('claim_type',        formData.claim_type);
+      fd.append('severity',          formData.severity);
+      fd.append('incident_date',     formData.incident_date);
+      fd.append('incident_location', formData.incident_location);
+      fd.append('payment_method',    formData.payment_method);
 
-      console.log('📤 Submitting claim data:', submitData);
-
-      if (editingClaim) {
-        await api.updateClaim(editingClaim.id, submitData);
-      } else {
-        await api.createClaim(submitData);
+      if (evidenceFile) {
+        fd.append('incident_evidence', evidenceFile);
       }
-      
-      onSuccess();
-      onClose();
+
+      if (!editingClaim) {
+        fd.append('claim_number', `CLM-${Date.now().toString().slice(-10)}`);
+      }
+
+      // ── KEY CHANGE: pass the new claim back so parent can navigate to it ──
+      if (editingClaim) {
+        await api.updateClaim(editingClaim.id, fd);
+        onSuccess(null);   // edit — just refresh the list
+        onClose();
+      } else {
+        const newClaim = await api.createClaim(fd);
+        onSuccess(newClaim);  // create — hand the new claim object up
+        onClose();
+      }
     } catch (err) {
       console.error('Failed to save claim:', err);
-      alert('Failed to save claim: ' + (err.message || 'Unknown error'));
+      const msg = err?.data
+        ? Object.entries(err.data).map(([f, m]) => `${f}: ${Array.isArray(m) ? m.join(', ') : m}`).join('\n')
+        : (err.message || 'Unknown error');
+      setErrors({ _form: msg });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   if (!isOpen) return null;
 
+  const inputBase = 'w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 transition-all bg-white';
+  const labelBase = 'block text-xs font-bold uppercase tracking-wider mb-1.5';
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-              {editingClaim ? 'Edit Claim' : 'Add Claim'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+           style={{ maxHeight: '92vh' }}>
+
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-7 py-5 border-b flex-shrink-0"
+             style={{ borderColor: '#E5E7EB' }}>
+          <div>
+            <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#2C3E50' }}>
+              <FileText className="w-5 h-5" style={{ color: '#FF6B4A' }} />
+              {editingClaim ? 'Edit Claim' : 'First Notice of Loss'}
             </h3>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg transition-colors"
-              style={{ backgroundColor: '#F8F9FA', color: '#7F8C8D' }}
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+              {editingClaim
+                ? 'Update claim details'
+                : 'Submit a new insurance claim'}
+            </p>
           </div>
+          <button onClick={() => { onClose(); resetForm(); }}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  style={{ color: '#7F8C8D' }}>
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          {/* Policy Selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-              Policy *
-            </label>
-            <select
-              required
-              value={formData.policy}
-              onChange={(e) => handlePolicyChange(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-              style={{ borderColor: '#E5E7EB' }}
-            >
-              <option value="">Select Policy</option>
-              {policies.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.policy_number} - {p.policyholder_name || 'Unknown'}
-                </option>
-              ))}
-            </select>
-            {formData.policy && formData.policyholder && formData.vehicle && (
-              <p className="mt-2 text-xs" style={{ color: '#10B981' }}>
-              </p>
+        {/* ── Body ────────────────────────────────────────────────────────── */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-7 py-6 space-y-6">
+
+          {errors._form && (
+            <div className="p-3 rounded-xl flex items-start gap-2 text-xs"
+                 style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <pre className="whitespace-pre-wrap font-sans">{errors._form}</pre>
+            </div>
+          )}
+
+          {/* ── Section 1: Policy ─────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7F8C8D' }}>
+              Policy Selection
+            </p>
+
+            <div>
+              <label className={labelBase} style={{ color: '#2C3E50' }}>Policy *</label>
+              <div ref={policyRef} className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                          style={{ color: '#9CA3AF' }} />
+                  <input
+                    type="text"
+                    value={policySearch}
+                    onChange={(e) => { setPolicySearch(e.target.value); setShowPolicyDrop(true); }}
+                    onFocus={() => setShowPolicyDrop(true)}
+                    placeholder="Type policy number to search…"
+                    className={`${inputBase} pl-10 pr-10`}
+                    style={{
+                      borderColor:     errors.policy ? '#EF4444' : selectedPolicy ? '#10B981' : '#E5E7EB',
+                      backgroundColor: selectedPolicy ? '#F0FDF4' : 'white',
+                    }}
+                  />
+                  {policySearching ? (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin"
+                             style={{ color: '#9CA3AF' }} />
+                  ) : selectedPolicy ? (
+                    <button type="button" onClick={clearPolicy}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-gray-100">
+                      <X className="w-3.5 h-3.5" style={{ color: '#9CA3AF' }} />
+                    </button>
+                  ) : (
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                                 style={{ color: '#9CA3AF' }} />
+                  )}
+                </div>
+
+                {showPolicyDrop && !selectedPolicy && (
+                  <div className="absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl overflow-hidden"
+                       style={{ border: '1px solid #E5E7EB', maxHeight: 220, overflowY: 'auto' }}>
+                    {policySearching ? (
+                      <div className="px-4 py-3 text-sm flex items-center gap-2 justify-center"
+                           style={{ color: '#9CA3AF' }}>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Searching policies…</span>
+                      </div>
+                    ) : policyOptions.length > 0 ? (
+                      policyOptions.map((pol) => (
+                        <button key={pol.id} type="button" onClick={() => applyPolicy(pol)}
+                                className="w-full text-left px-4 py-3 border-b last:border-0 transition-colors"
+                                style={{ borderColor: '#F3F4F6' }}
+                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#FFF5F3')}
+                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                          <div className="font-semibold text-sm" style={{ color: '#2C3E50' }}>
+                            {pol.policy_number}
+                          </div>
+                          <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: '#9CA3AF' }}>
+                            <span>{pol.policyholder_name || '—'}</span>
+                            <span>·</span>
+                            <span>{pol.vehicle_display || pol.policy_type}</span>
+                            <span>·</span>
+                            <span className="font-medium" style={{
+                              color: pol.status === 'ACTIVE' ? '#10B981' : '#EF4444'
+                            }}>{pol.status}</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-center" style={{ color: '#9CA3AF' }}>
+                        {policySearch.length > 0
+                          ? `No policies match "${policySearch}"`
+                          : 'Start typing to search policies'}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {errors.policy && (
+                <p className="mt-1 text-xs" style={{ color: '#EF4444' }}>{errors.policy}</p>
+              )}
+            </div>
+
+            {selectedPolicy && (
+              <div className="mt-3 p-4 rounded-xl border-2 flex items-start gap-4"
+                   style={{ backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' }}>
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#10B981' }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#059669' }}>
+                    Policy auto-populated
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <div>
+                      <span style={{ color: '#6EE7B7' }}>Policyholder</span>
+                      <p className="font-semibold truncate" style={{ color: '#065F46' }}>
+                        {selectedPolicy.policyholder_name || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <span style={{ color: '#6EE7B7' }}>Vehicle</span>
+                      <p className="font-semibold truncate" style={{ color: '#065F46' }}>
+                        {selectedPolicy.vehicle_display || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <span style={{ color: '#6EE7B7' }}>Type</span>
+                      <p className="font-semibold" style={{ color: '#065F46' }}>
+                        {selectedPolicy.policy_type || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <span style={{ color: '#6EE7B7' }}>Status</span>
+                      <p className="font-semibold" style={{
+                        color: selectedPolicy.status === 'ACTIVE' ? '#065F46' : '#991B1B'
+                      }}>
+                        {selectedPolicy.status || '—'}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedPolicy.status !== 'ACTIVE' && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs"
+                         style={{ color: '#DC2626' }}>
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Warning: this policy is not active — the claim may be auto-rejected.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Basic Claim Information */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Claim Type *
-              </label>
-              <select
-                required
-                value={formData.claim_type}
-                onChange={(e) => setFormData({ ...formData, claim_type: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              >
-                <option value="ACCIDENT">Accident</option>
-                <option value="THEFT">Theft</option>
-                <option value="VANDALISM">Vandalism</option>
-                <option value="NATURAL_DISASTER">Natural Disaster</option>
-                <option value="FIRE">Fire</option>
-                <option value="OTHER">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Severity *
-              </label>
-              <select
-                required
-                value={formData.severity}
-                onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              >
-                <option value="MINOR">Minor</option>
-                <option value="MODERATE">Moderate</option>
-                <option value="MAJOR">Major</option>
-                <option value="TOTAL_LOSS">Total Loss</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Status *
-              </label>
-              <select
-                required
-                value={formData.claim_status}
-                onChange={(e) => setFormData({ ...formData, claim_status: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              >
-                <option value="SUBMITTED">Submitted</option>
-                <option value="UNDER_REVIEW">Under Review</option>
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
-                <option value="PAID">Paid</option>
-                <option value="CLOSED">Closed</option>
-              </select>
-            </div>
-          </div>
+          {/* ── Section 2: Incident Details ───────────────────────────────── */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7F8C8D' }}>
+              Incident Details
+            </p>
 
-          {/* Incident Details */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Incident Date *
-              </label>
-              <input
-                type="date"
-                required
-                value={formData.incident_date}
-                onChange={(e) => setFormData({ ...formData, incident_date: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Incident Location *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.incident_location}
-                onChange={(e) => setFormData({ ...formData, incident_location: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-                placeholder="e.g., Harare"
-              />
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-              Incident Description *
-            </label>
-            <textarea
-              required
-              value={formData.incident_description}
-              onChange={(e) => setFormData({ ...formData, incident_description: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-              style={{ borderColor: '#E5E7EB' }}
-              rows="3"
-              placeholder="Describe the incident..."
-            />
-          </div>
-
-          {/* Police Report Details */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2C3E50' }}>
-                <input
-                  type="checkbox"
-                  checked={formData.police_report_filed}
-                  onChange={(e) => setFormData({ ...formData, police_report_filed: e.target.checked })}
-                  className="rounded"
-                />
-                Police Report Filed
-              </label>
-            </div>
-            {formData.police_report_filed && (
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                  Police Report Number
-                </label>
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Claim Type *</label>
+                <select
+                  required
+                  value={formData.claim_type}
+                  onChange={(e) => setFormData((p) => ({ ...p, claim_type: e.target.value }))}
+                  className={inputBase}
+                  style={{ borderColor: '#E5E7EB' }}>
+                  {CLAIM_TYPES.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Severity *</label>
+                <select
+                  required
+                  value={formData.severity}
+                  onChange={(e) => setFormData((p) => ({ ...p, severity: e.target.value }))}
+                  className={inputBase}
+                  style={{ borderColor: '#E5E7EB' }}>
+                  {SEVERITIES.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Incident Date &amp; Time *</label>
+                <input
+                  type="datetime-local"
+                  required
+                  max={todayISO()}
+                  value={formData.incident_date}
+                  onChange={(e) => {
+                    setFormData((p) => ({ ...p, incident_date: e.target.value }));
+                    setErrors((prev) => ({ ...prev, incident_date: undefined }));
+                  }}
+                  className={inputBase}
+                  style={{ borderColor: errors.incident_date ? '#EF4444' : '#E5E7EB' }}
+                />
+                {errors.incident_date && (
+                  <p className="mt-1 text-xs" style={{ color: '#EF4444' }}>{errors.incident_date}</p>
+                )}
+              </div>
+
+              <div>
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Incident Location *</label>
                 <input
                   type="text"
-                  value={formData.police_report_number}
-                  onChange={(e) => setFormData({ ...formData, police_report_number: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E5E7EB' }}
-                  placeholder="PR-12345"
+                  required
+                  placeholder="e.g., Harare CBD, Corner 1st St"
+                  value={formData.incident_location}
+                  onChange={(e) => {
+                    setFormData((p) => ({ ...p, incident_location: e.target.value }));
+                    setErrors((prev) => ({ ...prev, incident_location: undefined }));
+                  }}
+                  className={inputBase}
+                  style={{ borderColor: errors.incident_location ? '#EF4444' : '#E5E7EB' }}
                 />
+                {errors.incident_location && (
+                  <p className="mt-1 text-xs" style={{ color: '#EF4444' }}>{errors.incident_location}</p>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Witness Information */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2C3E50' }}>
-                <input
-                  type="checkbox"
-                  checked={formData.witnesses_present}
-                  onChange={(e) => setFormData({ ...formData, witnesses_present: e.target.checked })}
-                  className="rounded"
-                />
-                Witnesses Present
-              </label>
-            </div>
-            {formData.witnesses_present && (
+          {/* ── Section 3: Payment & Evidence ────────────────────────────── */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7F8C8D' }}>
+              Payment &amp; Evidence
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                  Number of Witnesses
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.number_of_witnesses}
-                  onChange={(e) => setFormData({ ...formData, number_of_witnesses: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E5E7EB' }}
-                />
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Preferred Payment Method *</label>
+                <select
+                  required
+                  value={formData.payment_method}
+                  onChange={(e) => setFormData((p) => ({ ...p, payment_method: e.target.value }))}
+                  className={inputBase}
+                  style={{ borderColor: '#E5E7EB' }}>
+                  {PAYMENT_METHODS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
               </div>
-            )}
-          </div>
 
-          {/* Incident Details */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Vehicles Involved
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={formData.number_of_vehicles_involved}
-                onChange={(e) => setFormData({ ...formData, number_of_vehicles_involved: parseInt(e.target.value) || 1 })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Number of Injuries
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.number_of_injuries}
-                onChange={(e) => setFormData({ ...formData, number_of_injuries: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-              />
-            </div>
-            <div className="flex items-center">
-              <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2C3E50' }}>
+              <div>
+                <label className={labelBase} style={{ color: '#2C3E50' }}>Evidence Upload</label>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-3 px-4 py-2.5 rounded-xl border cursor-pointer transition-all text-sm"
+                  style={{
+                    borderColor:     evidenceFile ? '#10B981' : '#E5E7EB',
+                    borderStyle:     'dashed',
+                    backgroundColor: evidenceFile ? '#F0FDF4' : '#F8F9FA',
+                    color:           evidenceFile ? '#065F46' : '#9CA3AF',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#FF6B4A')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = evidenceFile ? '#10B981' : '#E5E7EB')}>
+                  <Upload className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate text-xs">
+                    {evidenceFile
+                      ? evidenceFile.name
+                      : existingEvidence
+                        ? 'Replace existing file…'
+                        : 'Photo, PDF or doc'}
+                  </span>
+                </div>
                 <input
-                  type="checkbox"
-                  checked={formData.third_party_involved}
-                  onChange={(e) => setFormData({ ...formData, third_party_involved: e.target.checked })}
-                  className="rounded"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  className="hidden"
                 />
-                Third Party Involved
-              </label>
+                {existingEvidence && !evidenceFile && (
+                  <p className="mt-1 text-xs" style={{ color: '#6B7280' }}>
+                    Existing evidence on file. Upload a new file to replace it.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Financial Details */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Claimed Amount ($) *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={formData.claimed_amount}
-                onChange={(e) => setFormData({ ...formData, claimed_amount: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Approved Amount ($)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.approved_amount}
-                onChange={(e) => setFormData({ ...formData, approved_amount: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
-                Paid Amount ($)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.paid_amount}
-                onChange={(e) => setFormData({ ...formData, paid_amount: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E5E7EB' }}
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 rounded-lg font-medium transition-colors"
-              style={{ backgroundColor: '#F8F9FA', color: '#7F8C8D' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 rounded-lg text-white font-medium transition-colors"
-              style={{ backgroundColor: '#FF6B4A' }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#E55A3A';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = '#FF6B4A';
-              }}
-            >
-              {editingClaim ? 'Update' : 'Create'}
-            </button>
-          </div>
         </form>
+
+        {/* ── Footer ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-end gap-3 px-7 py-4 border-t flex-shrink-0"
+             style={{ borderColor: '#E5E7EB', backgroundColor: '#F8F9FA' }}>
+          <button
+            type="button"
+            onClick={() => { onClose(); resetForm(); }}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+            style={{ backgroundColor: 'white', color: '#7F8C8D', border: '1px solid #E5E7EB' }}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="fnol-form"
+            disabled={isSaving}
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-60"
+            style={{ backgroundColor: '#FF6B4A', boxShadow: '0 2px 8px rgba(255,107,74,0.35)' }}
+            onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.backgroundColor = '#E55A3A'; }}
+            onMouseLeave={(e) => { if (!isSaving) e.currentTarget.style.backgroundColor = '#FF6B4A'; }}>
+            {isSaving
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+              : editingClaim
+                ? 'Update Claim'
+                : 'Submit Claim'}
+          </button>
+        </div>
       </div>
     </div>
   );

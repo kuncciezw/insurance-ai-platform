@@ -28,7 +28,6 @@ class ApiService {
     localStorage.removeItem('user');
   }
 
-  // Handle multiple requests waiting for token refresh
   onRefreshed(token) {
     this.refreshSubscribers.forEach(callback => callback(token));
     this.refreshSubscribers = [];
@@ -39,7 +38,6 @@ class ApiService {
   }
 
   async refreshAccessToken() {
-    // If already refreshing, wait for it to complete
     if (this.isRefreshing) {
       return new Promise((resolve) => {
         this.addRefreshSubscriber((token) => {
@@ -71,7 +69,6 @@ class ApiService {
       const data = await response.json();
       console.log('✅ Token refreshed successfully');
       
-      // Update tokens
       this.setTokens(data.access, this.refreshToken);
       this.isRefreshing = false;
       this.onRefreshed(data.access);
@@ -89,8 +86,9 @@ class ApiService {
   async request(endpoint, options = {}) {
     const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     const url = `${this.baseURL}${normalizedEndpoint}`;
+    const isFormData = options.body instanceof FormData;
     const headers = {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     };
 
@@ -101,7 +99,8 @@ class ApiService {
     console.log('🔵 API Request:', {
       url,
       method: options.method || 'GET',
-      hasAuth: !!this.accessToken
+      hasAuth: !!this.accessToken,
+      isFormData
     });
 
     try {
@@ -115,16 +114,13 @@ class ApiService {
         statusText: response.statusText
       });
 
-      // Handle 401 - Unauthorized
       if (response.status === 401 && this.refreshToken && !options._retry) {
         console.log('🔄 Attempting token refresh...');
         const refreshed = await this.refreshAccessToken();
         
         if (refreshed) {
-          // Retry the original request with new token
           return this.request(endpoint, { ...options, _retry: true });
         } else {
-          // Refresh failed, redirect to login
           window.location.href = '/login?reason=session_expired';
           throw new Error('Session expired. Please log in again.');
         }
@@ -134,7 +130,6 @@ class ApiService {
     } catch (error) {
       console.error('🔴 API request failed:', error);
       
-      // Network error - server offline or no internet
       if (error instanceof TypeError && error.message.includes('fetch')) {
         const networkError = new Error('Unable to connect to server. Please check your internet connection.');
         networkError.status = 0;
@@ -343,10 +338,12 @@ class ApiService {
     return await this.request(`/fraud-detection/stats/?period=${period}`);
   }
 
-  // Policyholders
+  // Policyholders — supports ?search=&page_size= for server-side searching
   async getPolicyholders(params = {}) {
     const queryString = new URLSearchParams(params).toString();
-    const data = await this.request(`/fraud-detection/policyholders/${queryString ? `?${queryString}` : ''}`);
+    const data = await this.request(
+      `/fraud-detection/policyholders/${queryString ? `?${queryString}` : ''}`
+    );
     return data.results ? data : { results: data };
   }
 
@@ -374,10 +371,12 @@ class ApiService {
     });
   }
 
-  // Vehicles
+  // Vehicles — supports ?search=&policyholder= for server-side searching
   async getVehicles(params = {}) {
     const queryString = new URLSearchParams(params).toString();
-    return this.request(`/fraud-detection/vehicles/${queryString ? `?${queryString}` : ''}`);
+    return this.request(
+      `/fraud-detection/vehicles/${queryString ? `?${queryString}` : ''}`
+    );
   }
 
   async getVehicle(id) {
@@ -451,16 +450,18 @@ class ApiService {
   }
 
   async createClaim(data) {
+    const isFormData = data instanceof FormData;
     return this.request('/fraud-detection/claims/', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: isFormData ? data : JSON.stringify(data),
     });
   }
 
   async updateClaim(id, data) {
+    const isFormData = data instanceof FormData;
     return this.request(`/fraud-detection/claims/${id}/`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
+      method: 'PATCH', // (PATCH is correct based on your existing code)
+      body: isFormData ? data : JSON.stringify(data),
     });
   }
 

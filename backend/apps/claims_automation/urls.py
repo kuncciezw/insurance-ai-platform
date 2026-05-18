@@ -13,7 +13,7 @@ app_name = 'claims_automation'
 
 claims_patterns = [
     path('estimate-cost/', views.estimate_claim_cost, name='estimate-cost'),
-    path('estimate-cost-direct/', views.estimate_claim_cost_direct, name='estimate-cost-direct'),  
+    path('estimate-cost-direct/', views.estimate_claim_cost_direct, name='estimate-cost-direct'),
     path('batch-triage/', views.batch_triage_claims, name='batch-triage'),
     path('recommendations/<uuid:claim_id>/', views.processing_recommendations, name='recommendations'),
     path('claims/<uuid:claim_id>/auto-process/', views.auto_process_claim, name='auto-process'),

@@ -1,6 +1,6 @@
 """
 Feature Engineering Helper for ML Models
-FIXED VERSION - Ensures all required fields are present
+UPDATED VERSION - Removed fields no longer in Claim model
 Place this file in: apps/fraud_detection/ml_feature_engineering.py
 """
 
@@ -38,7 +38,7 @@ def enrich_claim_data(claim, policy=None, vehicle=None, policyholder=None) -> Di
     
     # Calculate vehicle age
     current_year = date.today().year
-    vehicle_age = current_year - vehicle.year
+    vehicle_age = current_year - vehicle.manufacture_year  # Changed from vehicle.year
     
     # Get previous claims count for this policyholder
     from apps.fraud_detection.models import Claim
@@ -48,29 +48,24 @@ def enrich_claim_data(claim, policy=None, vehicle=None, policyholder=None) -> Di
     ).count()
     
     enriched_data = {
-        # Basic claim info (use actual model field names)
+        # Basic claim info
         'claim_amount': float(claim.claimed_amount),
-        'incident_severity': claim.severity,  # Maps to model's 'severity' field
-        'severity': claim.severity,  # Also include as 'severity'
-        'incident_type': claim.claim_type,  # Maps to model's 'claim_type' field
-        'claim_type': claim.claim_type,  # Also include as 'claim_type'
+        'incident_severity': claim.severity,
+        'severity': claim.severity,
+        'incident_type': claim.claim_type,
+        'claim_type': claim.claim_type,
         'incident_date': claim.incident_date,
-        'incident_description': claim.incident_description,
-        'filed_date': claim.submitted_date,  # For backward compatibility
+        'filed_date': claim.submitted_date,
         'submitted_date': claim.submitted_date,
         
-        # CRITICAL: These were missing and causing the error
-        'police_report_filed': bool(claim.police_report_filed),
-        'number_of_witnesses': int(claim.number_of_witnesses),
+        # Number of vehicles involved
         'number_of_vehicles_involved': int(claim.number_of_vehicles_involved),
-        'number_of_injuries': int(claim.number_of_injuries),
-        'third_party_involved': bool(claim.third_party_involved),
         
         # Policy info
         'coverage_amount': float(policy.coverage_amount),
         'policy_age_at_claim': policy_age_days,
         
-        # CRITICAL: Vehicle info (was missing vehicle_age)
+        # Vehicle info
         'vehicle_age': vehicle_age,
         'vehicle_has_alarm': bool(vehicle.has_anti_theft),
         'vehicle_value': float(vehicle.market_value),
@@ -78,9 +73,14 @@ def enrich_claim_data(claim, policy=None, vehicle=None, policyholder=None) -> Di
         
         # Policyholder info
         'policyholder_age': policyholder.age,
-        'credit_score': int(policyholder.credit_score),
+        'credit_score': int(policyholder.credit_score or 650),
         'years_with_company': int(policyholder.years_with_company),
         'previous_claims_count': previous_claims,
+        
+        # License information
+        'has_driving_license': bool(policyholder.has_driving_license),
+        'has_defensive_license': bool(policyholder.has_defensive_license),
+        'is_medical_license_valid': bool(policyholder.is_medical_license_valid),
     }
     
     return enriched_data
@@ -91,6 +91,13 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
     Prepare claim data with all required features for ML model.
     This creates features in the EXACT order expected by the trained model.
     
+    REMOVED FIELDS (no longer in Claim model):
+    - number_of_injuries
+    - police_report_filed
+    - witnesses_present
+    - number_of_witnesses
+    - third_party_involved
+    
     Args:
         claim_data: Raw claim data dictionary (from enrich_claim_data)
         
@@ -98,7 +105,6 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
         DataFrame with engineered features matching model's expectations
     """
     
-    # Extract and calculate all required features
     features = {}
     
     # 1. claimed_amount (raw claim amount)
@@ -142,31 +148,19 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
     # 8. is_modified (boolean -> 0/1)
     features['is_modified'] = 1 if claim_data.get('is_modified', False) else 0
     
-    # 9. witnesses_present (boolean -> 0/1)
-    features['witnesses_present'] = 1 if claim_data.get('number_of_witnesses', 0) > 0 else 0
-    
-    # 10. number_of_witnesses (raw count)
-    features['number_of_witnesses'] = int(claim_data.get('number_of_witnesses', 0))
-    
-    # 11. number_of_vehicles_involved
+    # 9. number_of_vehicles_involved
     features['number_of_vehicles_involved'] = int(claim_data.get('number_of_vehicles_involved', 1))
     
-    # 12. number_of_injuries
-    features['number_of_injuries'] = int(claim_data.get('number_of_injuries', 0))
-    
-    # 13. third_party_involved (boolean -> 0/1)
-    features['third_party_involved'] = 1 if claim_data.get('third_party_involved', False) else 0
-    
-    # 14. policyholder_age
+    # 10. policyholder_age
     features['policyholder_age'] = int(claim_data.get('policyholder_age', 35))
     
-    # 15. credit_score
+    # 11. credit_score
     features['credit_score'] = int(claim_data.get('credit_score', 650))
     
-    # 16. years_with_company
+    # 12. years_with_company
     features['years_with_company'] = int(claim_data.get('years_with_company', 0))
     
-    # 17. policyholder_claim_count
+    # 13. policyholder_claim_count
     features['policyholder_claim_count'] = int(claim_data.get('previous_claims_count', 0))
     
     # Extract time-based features from incident date
@@ -178,20 +172,20 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
             except:
                 incident_date = datetime.now()
         
-        # 18. incident_hour
+        # 14. incident_hour
         features['incident_hour'] = incident_date.hour if hasattr(incident_date, 'hour') else 12
         
-        # 19. incident_day_of_week
+        # 15. incident_day_of_week
         features['incident_day_of_week'] = incident_date.weekday() if hasattr(incident_date, 'weekday') else 0
         
-        # 20. incident_month
+        # 16. incident_month
         features['incident_month'] = incident_date.month if hasattr(incident_date, 'month') else 1
     else:
         features['incident_hour'] = 12
         features['incident_day_of_week'] = 0
         features['incident_month'] = 1
     
-    # 21. submission_delay_hours (calculate delay between incident and filing)
+    # 17. submission_delay_hours (calculate delay between incident and filing)
     filed_date = claim_data.get('filed_date', claim_data.get('submitted_date'))
     if incident_date and filed_date:
         if isinstance(filed_date, str):
@@ -212,6 +206,7 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
         features['submission_delay_hours'] = 24
     
     # Convert to DataFrame with features in EXACT expected order
+    # UPDATED: Removed witnesses_present, number_of_witnesses, number_of_injuries, third_party_involved
     expected_columns = [
         'claimed_amount',
         'severity_encoded',
@@ -221,11 +216,7 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
         'vehicle_value',
         'has_anti_theft',
         'is_modified',
-        'witnesses_present',
-        'number_of_witnesses',
         'number_of_vehicles_involved',
-        'number_of_injuries',
-        'third_party_involved',
         'policyholder_age',
         'credit_score',
         'years_with_company',
@@ -245,6 +236,7 @@ def prepare_claim_features(claim_data: Dict[str, Any]) -> pd.DataFrame:
 def get_fraud_indicators(claim_data: Dict[str, Any], fraud_score: float) -> list:
     """
     Generate human-readable fraud indicators based on claim data and score.
+    Updated to reflect removed fields.
     
     Args:
         claim_data: Enriched claim data
@@ -263,19 +255,6 @@ def get_fraud_indicators(claim_data: Dict[str, Any], fraud_score: float) -> list
     # Recent policy
     if claim_data.get('policy_age_at_claim', 365) < 30:
         indicators.append("Claim filed shortly after policy inception")
-    
-    # No police report for severe incident
-    if claim_data.get('incident_severity') in ['MAJOR', 'TOTAL_LOSS'] and not claim_data.get('police_report_filed'):
-        indicators.append("No police report for severe incident")
-    
-    # No witnesses for severe incident
-    if claim_data.get('incident_severity') in ['MAJOR', 'TOTAL_LOSS'] and claim_data.get('number_of_witnesses', 0) == 0:
-        indicators.append("No witnesses for severe incident")
-    
-    # Vague description
-    description = claim_data.get('incident_description', '')
-    if len(description) < 50:
-        indicators.append("Incident description is vague or incomplete")
     
     # Old vehicle with high claim
     vehicle_age = claim_data.get('vehicle_age', 0)
@@ -306,6 +285,13 @@ def get_fraud_indicators(claim_data: Dict[str, Any], fraud_score: float) -> list
     # Late submission (suspicious delay)
     if claim_data.get('submission_delay_hours', 24) > 168:  # 7 days
         indicators.append("Unusual delay in claim submission")
+    
+    # License issues
+    if not claim_data.get('has_driving_license', True):
+        indicators.append("No valid driving license on file")
+    
+    if not claim_data.get('is_medical_license_valid', True):
+        indicators.append("Medical fitness certificate not valid")
     
     # If no specific indicators but high fraud score
     if not indicators and fraud_score > 0.6:

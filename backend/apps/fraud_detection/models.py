@@ -1,6 +1,14 @@
 """
 Models for Fraud Detection Application
-Includes Policyholders, Vehicles, Policies, and Claims
+Updated with requested changes:
+- Removed postal_code
+- Added license fields to Policyholder
+- Changed Vehicle.year to manufacture_year
+- Removed vehicle_id
+- Added currency to Policy
+- Removed Claims fields: number_of_injuries, police_report_filed, witnesses_present, third_party_involved
+- Added payment_method to Claims
+- Added incident_evidence file field to Claims
 """
 
 from django.db import models
@@ -35,6 +43,14 @@ class Policyholder(models.Model):
         ('STUDENT', 'Student'),
     ]
 
+    CREDIT_RATING_CHOICES = [
+        ('EXCELLENT', 'Excellent (750-850)'),
+        ('GOOD', 'Good (700-749)'),
+        ('FAIR', 'Fair (650-699)'),
+        ('POOR', 'Poor (600-649)'),
+        ('VERY_POOR', 'Very Poor (300-599)'),
+    ]
+
     # Primary identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     policy_holder_id = models.CharField(max_length=20, unique=True, db_index=True)
@@ -45,8 +61,6 @@ class Policyholder(models.Model):
     date_of_birth = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
     national_id = models.CharField(max_length=20, blank=True, null=True)
-    credit_rating = models.CharField(max_length=20, blank=True, null=True)  # EXCELLENT, GOOD, etc.
-    monthly_income = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     # Contact information
     email = models.EmailField(unique=True, db_index=True)
@@ -60,28 +74,44 @@ class Policyholder(models.Model):
         ]
     )
     
-    # Address information
+    # Address information (postal_code removed)
     address_line1 = models.CharField(max_length=255)
     address_line2 = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
-    postal_code = models.CharField(max_length=20)
-    country = models.CharField(max_length=100, default='USA')
+    country = models.CharField(max_length=100, default='Zimbabwe')
     
     # Demographics and risk factors
     marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES)
     occupation = models.CharField(max_length=50, choices=OCCUPATION_CHOICES)
-    annual_income = models.DecimalField(
+    monthly_income = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        default=Decimal('0.00')
     )
     
-    # Credit and history
+    # Credit information (auto-calculated)
     credit_score = models.IntegerField(
         validators=[MinValueValidator(300), MaxValueValidator(850)],
-        help_text="Credit score between 300 and 850"
+        help_text="Auto-calculated credit score between 300 and 850",
+        null=True,
+        blank=True
     )
+    credit_rating = models.CharField(
+        max_length=20, 
+        choices=CREDIT_RATING_CHOICES,
+        help_text="Auto-calculated based on credit score",
+        null=True,
+        blank=True
+    )
+    
+    # License validation fields (NEW)
+    has_driving_license = models.BooleanField(default=False, help_text="Has valid driving license")
+    has_defensive_license = models.BooleanField(default=False, help_text="Has defensive driving certificate")
+    is_medical_license_valid = models.BooleanField(default=True, help_text="Medical fitness certificate is valid")
+    
+    # Company history
     years_with_company = models.IntegerField(
         default=0,
         validators=[MinValueValidator(0)],
@@ -119,6 +149,69 @@ class Policyholder(models.Model):
         return today.year - self.date_of_birth.year - (
             (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
         )
+    
+    @property
+    def annual_income(self):
+        """Calculate annual income from monthly income"""
+        return self.monthly_income * 12
+    
+    def calculate_credit_score(self):
+        """Auto-calculate credit score based on various factors"""
+        base_score = 650  # Default starting score
+        
+        # Income factor (higher income = better score)
+        if self.monthly_income >= 5000:
+            base_score += 50
+        elif self.monthly_income >= 3000:
+            base_score += 30
+        elif self.monthly_income >= 1500:
+            base_score += 10
+        
+        # Years with company (loyalty bonus)
+        base_score += min(self.years_with_company * 5, 50)
+        
+        # License checks
+        if self.has_driving_license:
+            base_score += 20
+        if self.has_defensive_license:
+            base_score += 15
+        if not self.is_medical_license_valid:
+            base_score -= 30
+        
+        # Check claims history
+        from apps.fraud_detection.models import Claim
+        claims_count = Claim.objects.filter(policyholder=self).count()
+        fraudulent_claims = Claim.objects.filter(policyholder=self, is_fraudulent=True).count()
+        
+        if fraudulent_claims > 0:
+            base_score -= fraudulent_claims * 50
+        elif claims_count > 3:
+            base_score -= (claims_count - 3) * 10
+        
+        # Ensure within valid range
+        return max(300, min(850, base_score))
+    
+    def calculate_credit_rating(self):
+        """Auto-calculate credit rating based on credit score"""
+        score = self.credit_score or self.calculate_credit_score()
+        
+        if score >= 750:
+            return 'EXCELLENT'
+        elif score >= 700:
+            return 'GOOD'
+        elif score >= 650:
+            return 'FAIR'
+        elif score >= 600:
+            return 'POOR'
+        else:
+            return 'VERY_POOR'
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate credit score and rating on save"""
+        if not self.credit_score:
+            self.credit_score = self.calculate_credit_score()
+        self.credit_rating = self.calculate_credit_rating()
+        super().save(*args, **kwargs)
 
 
 class Vehicle(models.Model):
@@ -143,14 +236,13 @@ class Vehicle(models.Model):
         ('SPORTS', 'Sports Car'),
     ]
 
-    # Primary identification
+    # Primary identification (vehicle_id removed)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    vehicle_id = models.CharField(max_length=20, unique=True, db_index=True)
     
     # Vehicle details
     make = models.CharField(max_length=50)
     model = models.CharField(max_length=50)
-    year = models.IntegerField(
+    manufacture_year = models.IntegerField(  # Changed from 'year'
         validators=[MinValueValidator(1900), MaxValueValidator(2030)]
     )
     vehicle_type = models.CharField(max_length=20, choices=VEHICLE_TYPE_CHOICES)
@@ -211,7 +303,6 @@ class Vehicle(models.Model):
         db_table = 'vehicles'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['vehicle_id']),
             models.Index(fields=['vin']),
             models.Index(fields=['registration_number']),
             models.Index(fields=['policyholder']),
@@ -220,17 +311,17 @@ class Vehicle(models.Model):
         verbose_name_plural = 'Vehicles'
 
     def __str__(self):
-        return f"{self.year} {self.make} {self.model} ({self.vehicle_id})"
+        return f"{self.manufacture_year} {self.make} {self.model}"
     
     @property
     def vehicle_age(self):
         from datetime import date
-        return date.today().year - self.year
+        return date.today().year - self.manufacture_year
 
 
 class Policy(models.Model):
     """
-    Insurance Policy model
+    Insurance Policy model with auto-calculated premiums
     """
     POLICY_TYPE_CHOICES = [
         ('COMPREHENSIVE', 'Comprehensive'),
@@ -251,6 +342,11 @@ class Policy(models.Model):
         ('BASIC', 'Basic'),
         ('STANDARD', 'Standard'),
         ('PREMIUM', 'Premium'),
+    ]
+    
+    CURRENCY_CHOICES = [  # NEW
+        ('USD', 'US Dollar'),
+        ('ZWG', 'Zimbabwe Gold'),
     ]
 
     # Primary identification
@@ -273,25 +369,35 @@ class Policy(models.Model):
     policy_type = models.CharField(max_length=20, choices=POLICY_TYPE_CHOICES)
     coverage_level = models.CharField(max_length=20, choices=COVERAGE_LEVEL_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD')  # NEW
     
-    # Financial details
+    # Financial details (auto-calculated)
     premium_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-calculated premium amount",
+        null=True,
+        blank=True
     )
     coverage_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-calculated coverage amount",
+        null=True,
+        blank=True
     )
     deductible = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-calculated deductible amount",
+        null=True,
+        blank=True
     )
     
-    # Dates
+    # Dates (start_date defaults to today)
     start_date = models.DateField()
     end_date = models.DateField()
     
@@ -332,11 +438,128 @@ class Policy(models.Model):
         if self.end_date > date.today():
             return (self.end_date - date.today()).days
         return 0
+    
+    def calculate_premium(self):
+        """Auto-calculate premium based on multiple factors"""
+        # Base premium based on vehicle value
+        base_premium = float(self.vehicle.market_value) * 0.05  # 5% of vehicle value
+        
+        # Coverage level multiplier
+        coverage_multipliers = {
+            'BASIC': 1.0,
+            'STANDARD': 1.3,
+            'PREMIUM': 1.6
+        }
+        base_premium *= coverage_multipliers.get(self.coverage_level, 1.0)
+        
+        # Policy type multiplier
+        policy_multipliers = {
+            'COMPREHENSIVE': 1.5,
+            'THIRD_PARTY': 0.7,
+            'COLLISION': 1.2,
+            'LIABILITY': 0.8
+        }
+        base_premium *= policy_multipliers.get(self.policy_type, 1.0)
+        
+        # Vehicle age factor (older vehicles = lower premium)
+        vehicle_age = self.vehicle.vehicle_age
+        if vehicle_age > 10:
+            base_premium *= 0.7
+        elif vehicle_age > 5:
+            base_premium *= 0.85
+        
+        # Driver risk factors
+        driver_age = self.policyholder.age
+        if driver_age < 25:
+            base_premium *= 1.4  # Young driver surcharge
+        elif driver_age > 65:
+            base_premium *= 1.2  # Senior driver surcharge
+        
+        # Credit score discount
+        credit_score = self.policyholder.credit_score or 650
+        if credit_score >= 750:
+            base_premium *= 0.85  # Excellent credit discount
+        elif credit_score >= 700:
+            base_premium *= 0.92  # Good credit discount
+        elif credit_score < 600:
+            base_premium *= 1.15  # Poor credit surcharge
+        
+        # License discounts
+        if self.policyholder.has_defensive_license:
+            base_premium *= 0.9  # Defensive driving discount
+        if not self.policyholder.has_driving_license:
+            base_premium *= 1.5  # No license penalty
+        if not self.policyholder.is_medical_license_valid:
+            base_premium *= 1.2  # Medical concerns surcharge
+        
+        # Safety features discount
+        if self.vehicle.has_anti_theft:
+            base_premium *= 0.95
+        if self.vehicle.has_airbags:
+            base_premium *= 0.93
+        if self.vehicle.has_abs:
+            base_premium *= 0.95
+        
+        # Modified vehicle surcharge
+        if self.vehicle.is_modified:
+            base_premium *= 1.25
+        
+        # Additional coverage add-ons
+        if self.has_roadside_assistance:
+            base_premium += 50
+        if self.has_rental_coverage:
+            base_premium += 75
+        if self.has_glass_coverage:
+            base_premium += 40
+        
+        return Decimal(str(round(base_premium, 2)))
+    
+    def calculate_coverage(self):
+        """Auto-calculate coverage amount"""
+        # Coverage is based on vehicle value and coverage level
+        vehicle_value = float(self.vehicle.market_value)
+        
+        coverage_percentages = {
+            'BASIC': 0.8,      # 80% of vehicle value
+            'STANDARD': 1.0,   # 100% of vehicle value
+            'PREMIUM': 1.2     # 120% of vehicle value
+        }
+        
+        coverage_multiplier = coverage_percentages.get(self.coverage_level, 1.0)
+        coverage = vehicle_value * coverage_multiplier
+        
+        return Decimal(str(round(coverage, 2)))
+    
+    def calculate_deductible(self):
+        """Auto-calculate deductible amount"""
+        # Deductible is typically 5-15% of coverage amount
+        coverage = float(self.calculate_coverage())
+        
+        deductible_percentages = {
+            'BASIC': 0.15,     # 15% deductible
+            'STANDARD': 0.10,  # 10% deductible
+            'PREMIUM': 0.05    # 5% deductible
+        }
+        
+        deductible_pct = deductible_percentages.get(self.coverage_level, 0.10)
+        deductible = coverage * deductible_pct
+        
+        return Decimal(str(round(deductible, 2)))
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate financial amounts on save"""
+        if not self.premium_amount:
+            self.premium_amount = self.calculate_premium()
+        if not self.coverage_amount:
+            self.coverage_amount = self.calculate_coverage()
+        if not self.deductible:
+            self.deductible = self.calculate_deductible()
+        super().save(*args, **kwargs)
 
 
 class Claim(models.Model):
     """
-    Insurance Claim model
+    Insurance Claim model - streamlined version
     """
     CLAIM_TYPE_CHOICES = [
         ('ACCIDENT', 'Accident'),
@@ -362,12 +585,19 @@ class Claim(models.Model):
         ('MAJOR', 'Major'),
         ('TOTAL_LOSS', 'Total Loss'),
     ]
+    
+    PAYMENT_METHOD_CHOICES = [  # NEW
+        ('SWIPE', 'Swipe Card'),
+        ('ECOCASH', 'EcoCash'),
+        ('CASH', 'Cash'),
+        ('BANK_TRANSFER', 'Bank Transfer'),
+    ]
 
     # Primary identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     claim_number = models.CharField(max_length=20, unique=True, db_index=True)
     
-    # Relationships
+    # Relationships (auto-populated from policy)
     policy = models.ForeignKey(
         Policy,
         on_delete=models.CASCADE,
@@ -386,45 +616,60 @@ class Claim(models.Model):
     
     # Claim details
     claim_type = models.CharField(max_length=30, choices=CLAIM_TYPE_CHOICES)
-    claim_status = models.CharField(max_length=20, choices=CLAIM_STATUS_CHOICES, default='SUBMITTED')
+    claim_status = models.CharField(
+        max_length=20, 
+        choices=CLAIM_STATUS_CHOICES, 
+        default='SUBMITTED',
+        help_text="Auto-determined from policy status"
+    )
     severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
     
     # Incident information
     incident_date = models.DateTimeField()
     incident_location = models.CharField(max_length=255)
-    incident_description = models.TextField()
+    incident_evidence = models.FileField(  # NEW - replaces incident_description text
+        upload_to='claim_evidence/',
+        help_text="Upload evidence file (photos, documents, etc.)",
+        null=True,
+        blank=True
+    )
     
-    # Police and witness information
-    police_report_filed = models.BooleanField(default=False)
-    police_report_number = models.CharField(max_length=50, blank=True, null=True)
-    witnesses_present = models.BooleanField(default=False)
-    number_of_witnesses = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    
-    # Parties involved
+    # Number of vehicles involved
     number_of_vehicles_involved = models.IntegerField(default=1, validators=[MinValueValidator(1)])
-    number_of_injuries = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    third_party_involved = models.BooleanField(default=False)
     
-    # Financial details
+    # Payment method (NEW)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='BANK_TRANSFER',
+        help_text="Preferred payment method for claim settlement"
+    )
+    
+    # Financial details (auto-calculated)
     claimed_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-calculated from damage assessment",
+        null=True,
+        blank=True
     )
     approved_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-calculated based on policy coverage"
     )
     paid_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Auto-set when payment is processed"
     )
     
-    # Fraud indicators (will be populated by ML model)
+    # Fraud indicators (populated by ML model)
     fraud_score = models.FloatField(
         default=0.0,
         validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
@@ -471,3 +716,48 @@ class Claim(models.Model):
         if self.closed_date:
             return (self.closed_date - self.submitted_date).days
         return None
+    
+    def calculate_claimed_amount(self):
+        """Auto-calculate claim amount based on severity and vehicle value"""
+        vehicle_value = float(self.vehicle.market_value)
+        
+        severity_percentages = {
+            'MINOR': 0.10,      # 10% of vehicle value
+            'MODERATE': 0.30,   # 30% of vehicle value
+            'MAJOR': 0.60,      # 60% of vehicle value
+            'TOTAL_LOSS': 1.0   # 100% of vehicle value
+        }
+        
+        damage_pct = severity_percentages.get(self.severity, 0.30)
+        claim_amount = vehicle_value * damage_pct
+        
+        # Cannot exceed policy coverage
+        max_coverage = float(self.policy.coverage_amount)
+        claim_amount = min(claim_amount, max_coverage)
+        
+        return Decimal(str(round(claim_amount, 2)))
+    
+    def auto_populate_from_policy(self):
+        """Auto-populate policyholder and vehicle from selected policy"""
+        if self.policy:
+            self.policyholder = self.policy.policyholder
+            self.vehicle = self.policy.vehicle
+    
+    def auto_update_claim_status(self):
+        """Auto-determine claim status from policy status"""
+        if not self.policy.is_active:
+            self.claim_status = 'REJECTED'
+        elif self.fraud_score >= 0.8:
+            self.claim_status = 'REJECTED'
+        elif self.fraud_score >= 0.6:
+            self.claim_status = 'UNDER_REVIEW'
+        # Otherwise keep current status
+    
+    def save(self, *args, **kwargs):
+        """Auto-populate and calculate fields on save."""
+        self.auto_populate_from_policy()
+    
+        if not self.claimed_amount:
+            self.claimed_amount = self.calculate_claimed_amount()
+        
+        super().save(*args, **kwargs)

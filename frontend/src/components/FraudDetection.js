@@ -1,237 +1,66 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import { Search, Filter, Eye, Flag, X, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { 
+  Shield, AlertTriangle, Eye, 
+  Calendar, DollarSign, Loader2, RefreshCw 
+} from 'lucide-react';
 import { api } from '../services/api';
+import { useCurrencyFormatter } from '../utils/currencyFormatter';
 
 export default function FraudDetection() {
-  const [claims, setClaims] = useState([]);
-  const [selectedClaim, setSelectedClaim] = useState(null);
-  const [fraudAnalysis, setFraudAnalysis] = useState(null);
-  const [riskFilter, setRiskFilter] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const navigate = useNavigate();
+  const { fmtMoney } = useCurrencyFormatter();
+
+  const [stats, setStats] = useState(null);
+  const [riskDistribution, setRiskDistribution] = useState(null);
+  const [highRiskClaims, setHighRiskClaims] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [period, setPeriod] = useState('30days');
+  const [currency, setCurrency] = useState('USD');
 
   useEffect(() => {
-    fetchClaims();
-  }, []);
+    loadDashboard();
+  }, [period]);
 
-  // Auto-dismiss messages after 5 seconds
-  useEffect(() => {
-    if (successMessage || error) {
-      const timer = setTimeout(() => {
-        setSuccessMessage(null);
-        setError(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage, error]);
-
-  const fetchClaims = async () => {
+  const loadDashboard = async () => {
+    setIsLoading(true);
     try {
-      setLoading(true);
-      // Fetch pending claims from backend
-      const response = await api.getClaims({ status: 'Pending' });
-      
-      // Handle both paginated and non-paginated responses
-      const claimsData = response.results || response;
-      setClaims(claimsData);
-      setError(null);
+      const [statsData, riskData, claimsData] = await Promise.all([
+        api.request('/fraud-detection/fraud/statistics/'),
+        api.request(`/fraud-detection/stats/?period=${period}`),
+        api.request('/fraud-detection/fraud/high-risk-claims/?threshold=0.6&limit=20'),
+      ]);
+
+      setStats(statsData);
+      setRiskDistribution(riskData);
+      setHighRiskClaims(claimsData.results || claimsData);
     } catch (err) {
-      console.error('Error fetching claims:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load claims');
+      console.error('Failed to load dashboard:', err);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleAnalyzeClaim = async (claim) => {
-    setSelectedClaim(claim);
-    setAnalyzing(true);
-    setFraudAnalysis(null);
-    
-    try {
-      // Call ML fraud analysis endpoint
-      const analysis = await api.request('/fraud-detection/fraud/analyze-claim/', {
-        method: 'POST',
-        body: JSON.stringify({ claim_id: claim.id })
-      });
-      
-      setFraudAnalysis(analysis);
-      
-      // Update the claim in the list with new fraud score
-      setClaims(prevClaims => 
-        prevClaims.map(c => 
-          c.id === claim.id 
-            ? { ...c, fraud_score: analysis.fraud_score, is_fraudulent: analysis.is_fraudulent }
-            : c
-        )
-      );
-    } catch (err) {
-      console.error('Fraud analysis error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to analyze claim');
-    } finally {
-      setAnalyzing(false);
-    }
+  const getRiskColor = (score) => {
+    if (score >= 0.7) return { bg: '#FEE2E2', text: '#991B1B' };
+    if (score >= 0.5) return { bg: '#FEF3C7', text: '#92400E' };
+    return { bg: '#F3F4F6', text: '#6B7280' };
   };
 
-  const handleApproveClaim = async () => {
-    if (!selectedClaim) return;
-    
-    try {
-      setAnalyzing(true);
-      setError(null);
-      
-      // Call approve endpoint
-      await api.request(`/fraud-detection/claims/${selectedClaim.id}/approve/`, {
-        method: 'POST',
-        body: JSON.stringify({
-          approved_amount: selectedClaim.claimed_amount
-        })
-      });
-      
-      // Update local state
-      setClaims(prevClaims => 
-        prevClaims.filter(c => c.id !== selectedClaim.id)
-      );
-      
-      // Show success message
-      setSuccessMessage('Claim approved successfully!');
-      
-      // Close panel
-      setSelectedClaim(null);
-      setFraudAnalysis(null);
-      
-    } catch (err) {
-      console.error('Error approving claim:', err);
-      setError(err instanceof Error ? err.message : 'Failed to approve claim');
-    } finally {
-      setAnalyzing(false);
-    }
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const handleRejectClaim = async () => {
-    if (!selectedClaim) return;
-    
-    const reason = prompt('Please enter rejection reason:');
-    if (!reason) return;
-    
-    try {
-      setAnalyzing(true);
-      setError(null);
-      
-      // Call reject endpoint
-      await api.request(`/fraud-detection/claims/${selectedClaim.id}/reject/`, {
-        method: 'POST',
-        body: JSON.stringify({
-          reason: reason
-        })
-      });
-      
-      // Update local state
-      setClaims(prevClaims => 
-        prevClaims.filter(c => c.id !== selectedClaim.id)
-      );
-      
-      // Show success message
-      setSuccessMessage('Claim rejected and flagged as fraudulent.');
-      
-      // Close panel
-      setSelectedClaim(null);
-      setFraudAnalysis(null);
-      
-    } catch (err) {
-      console.error('Error rejecting claim:', err);
-      setError(err instanceof Error ? err.message : 'Failed to reject claim');
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const handleRequestInvestigation = async () => {
-    if (!selectedClaim) return;
-    
-    try {
-      setAnalyzing(true);
-      setError(null);
-      
-      // Update claim status to UNDER_REVIEW
-      await api.updateClaim(selectedClaim.id, {
-        claim_status: 'UNDER_REVIEW'
-      });
-      
-      // Update local state
-      setClaims(prevClaims => 
-        prevClaims.map(c => 
-          c.id === selectedClaim.id 
-            ? { ...c, claim_status: 'UNDER_REVIEW' }
-            : c
-        )
-      );
-      
-      // Show success message
-      setSuccessMessage('Claim marked for investigation. An investigator will review this case.');
-      
-      // Close panel
-      setSelectedClaim(null);
-      setFraudAnalysis(null);
-      
-    } catch (err) {
-      console.error('Error requesting investigation:', err);
-      setError(err instanceof Error ? err.message : 'Failed to request investigation');
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const getRiskColor = (level) => {
-    if (typeof level === 'number') {
-      if (level < 0.3) return '#28A745';
-      if (level < 0.5) return '#FFC107';
-      if (level < 0.7) return '#FF6B4A';
-      return '#DC3545';
-    }
-    
-    switch (level.toUpperCase()) {
-      case 'LOW':
-        return '#28A745';
-      case 'MEDIUM':
-        return '#FFC107';
-      case 'HIGH':
-        return '#FF6B4A';
-      case 'CRITICAL':
-        return '#DC3545';
-      default:
-        return '#7F8C8D';
-    }
-  };
-
-  const getRiskLevel = (score) => {
-    if (score < 0.3) return 'Low';
-    if (score < 0.5) return 'Medium';
-    if (score < 0.7) return 'High';
-    return 'Critical';
-  };
-
-  const filteredClaims = claims.filter((claim) => {
-    const riskLevel = getRiskLevel(claim.fraud_score || 0);
-    const matchesRisk = riskFilter === 'All' || riskLevel === riskFilter;
-    const matchesSearch = 
-      claim.claim_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      claim.policyholder_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesRisk && matchesSearch;
-  });
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex h-screen">
+      <div className="flex h-screen" style={{ backgroundColor: '#F8F9FA' }}>
         <Sidebar />
-        <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: '#F8F9FA' }}>
+        <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="w-12 h-12 animate-spin mx-auto" style={{ color: '#FF6B4A' }} />
-            <p className="mt-4" style={{ color: '#7F8C8D' }}>Loading claims...</p>
+            <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3" style={{ color: '#FF6B4A' }} />
+            <p className="text-sm" style={{ color: '#7F8C8D' }}>Loading fraud analytics…</p>
           </div>
         </div>
       </div>
@@ -239,367 +68,240 @@ export default function FraudDetection() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#F8F9FA' }}>
       <Sidebar />
-      
-      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F8F9FA' }}>
+
+      <div className="flex-1 overflow-y-auto">
         <div className="p-8">
-          {/* Page Title */}
-          <h1 className="text-3xl font-bold mb-8" style={{ color: '#2C3E50' }}>
-            Fraud Detection Analysis
-          </h1>
 
-          {/* Filter Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm mb-2" style={{ color: '#7F8C8D' }}>
-                  Search Claim ID
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by ID or name..."
-                    className="w-full pl-10 pr-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
-                    style={{ borderColor: '#E0E0E0' }}
-                  />
-                  <Search className="absolute left-3 top-2.5 w-5 h-5" style={{ color: '#7F8C8D' }} />
+          {/* Header */}
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <h2 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
+                Fraud Detection
+              </h2>
+              <p className="mt-1.5 text-sm" style={{ color: '#7F8C8D' }}>
+                Monitor high-risk claims and fraud patterns
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Currency toggle */}
+              <div className="flex items-center gap-3 mr-2">
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7F8C8D' }}>Currency</span>
+                <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#E5E7EB' }}>
+                  {['USD', 'ZWG'].map((c) => (
+                    <button key={c} onClick={() => setCurrency(c)}
+                      className="px-4 py-1.5 rounded-lg text-sm font-bold transition-all duration-200"
+                      style={{ backgroundColor: currency === c ? '#FF6B4A' : 'transparent', color: currency === c ? '#FFFFFF' : '#7F8C8D', boxShadow: currency === c ? '0 2px 6px rgba(255,107,74,0.35)' : 'none' }}>
+                      {c}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm mb-2" style={{ color: '#7F8C8D' }}>
-                  Risk Level
-                </label>
-                <div className="relative">
-                  <select
-                    value={riskFilter}
-                    onChange={(e) => setRiskFilter(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 appearance-none"
-                    style={{ borderColor: '#E0E0E0' }}
-                  >
-                    <option>All</option>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                    <option>Critical</option>
-                  </select>
-                  <Filter className="absolute right-3 top-2.5 w-5 h-5 pointer-events-none" style={{ color: '#7F8C8D' }} />
-                </div>
-              </div>
+              {/* Period selector */}
+              <select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="px-4 py-2 rounded-xl border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-300"
+                style={{ borderColor: '#E5E7EB', color: '#2C3E50', height: '42px' }}>
+                <option value="7days">Last 7 days</option>
+                <option value="30days">Last 30 days</option>
+                <option value="90days">Last 90 days</option>
+              </select>
 
-              <div className="md:col-span-2 flex items-end">
-                <button
-                  onClick={fetchClaims}
-                  className="w-full py-2 px-4 rounded-lg text-white font-medium hover:shadow-lg transition-all"
-                  style={{ backgroundColor: '#2C3E50' }}
-                >
-                  Refresh
-                </button>
-              </div>
+              <button
+                onClick={loadDashboard}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                style={{ backgroundColor: '#FF6B4A', color: 'white', height: '42px' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#E55A3A')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FF6B4A')}>
+                <RefreshCw className="w-4 h-4" />
+                Refresh
+              </button>
             </div>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 rounded-lg flex items-center justify-between" style={{ backgroundColor: '#FEE', color: '#DC3545', border: '1px solid #DC3545' }}>
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="ml-4">
-                <X className="w-5 h-5" />
-              </button>
+          {/* KPI Cards - Simplified to 3 cards */}
+          {stats && (
+            <div className="grid grid-cols-3 gap-6 mb-8">
+              {[
+                {
+                  label: 'Total Claims',
+                  value: stats.total_claims?.toLocaleString() || '0',
+                  icon: <Shield className="w-5 h-5" />,
+                  color: '#2C3E50',
+                  bg: '#F8F9FA',
+                },
+                {
+                  label: 'High Risk',
+                  value: stats.high_risk_claims?.toLocaleString() || '0',
+                  subtext: `${((stats.high_risk_claims / (stats.total_claims || 1)) * 100).toFixed(1)}% of total`,
+                  icon: <AlertTriangle className="w-5 h-5" />,
+                  color: '#FF6B4A',
+                  bg: '#FFF5F3',
+                },
+                {
+                  label: 'Fraud Rate',
+                  value: `${((stats.fraud_rate || 0) * 100).toFixed(1)}%`,
+                  icon: <Shield className="w-5 h-5" />,
+                  color: stats.fraud_rate > 0.1 ? '#EF4444' : '#7F8C8D',
+                  bg: stats.fraud_rate > 0.1 ? '#FEE2E2' : '#F8F9FA',
+                },
+              ].map(({ label, value, subtext, icon, color, bg }) => (
+                <div key={label} className="bg-white rounded-2xl shadow-sm p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                         style={{ backgroundColor: bg, color }}>
+                      {icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium mb-1" style={{ color: '#9CA3AF' }}>{label}</p>
+                      <p className="text-2xl font-bold truncate" style={{ color: '#2C3E50' }}>{value}</p>
+                      {subtext && (
+                        <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>{subtext}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Success Message */}
-          {successMessage && (
-            <div className="mb-6 p-4 rounded-lg flex items-center justify-between" style={{ backgroundColor: '#D4EDDA', color: '#155724', border: '1px solid #C3E6CB' }}>
-              <div className="flex items-center">
-                <CheckCircle className="w-5 h-5 mr-2" />
-                <span>{successMessage}</span>
+          {/* High-Risk Claims Table */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b flex items-center justify-between"
+                 style={{ borderColor: '#E5E7EB' }}>
+              <div>
+                <h3 className="text-lg font-bold" style={{ color: '#2C3E50' }}>
+                  High-Risk Claims
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: '#7F8C8D' }}>
+                  Claims with fraud score ≥ 60% · Click to view details
+                </p>
               </div>
-              <button onClick={() => setSuccessMessage(null)} className="ml-4">
-                <X className="w-5 h-5" />
-              </button>
+              <span className="text-xs px-3 py-1.5 rounded-full font-bold"
+                    style={{ backgroundColor: '#FFF5F3', color: '#FF6B4A' }}>
+                {highRiskClaims.length} claims
+              </span>
             </div>
-          )}
 
-          {/* Results Table */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="p-6 border-b" style={{ borderColor: '#E0E0E0' }}>
-              <h2 className="text-xl font-bold" style={{ color: '#2C3E50' }}>
-                Fraud Analysis Results ({filteredClaims.length})
-              </h2>
-            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead style={{ backgroundColor: '#F8F9FA' }}>
+                <thead style={{ backgroundColor: '#F8F9FA', borderBottom: '2px solid #E5E7EB' }}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Claim ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Policyholder
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Fraud Score
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Risk Level
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium" style={{ color: '#7F8C8D' }}>
-                      Actions
-                    </th>
+                    {['Claim #', 'Policyholder', 'Type', `Amount`, 'Fraud Score', 'Submitted', ''].map((h) => (
+                      <th key={h}
+                          className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider"
+                          style={{ color: '#2C3E50' }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredClaims.map((claim) => {
-                    const fraudScore = claim.fraud_score || 0;
-                    const riskLevel = getRiskLevel(fraudScore);
-                    return (
-                      <tr
-                        key={claim.id}
-                        className="border-b hover:bg-gray-50 transition-colors"
-                        style={{ borderColor: '#E0E0E0' }}
-                      >
-                        <td className="px-6 py-4 font-medium" style={{ color: '#2C3E50' }}>
-                          {claim.claim_number}
-                        </td>
-                        <td className="px-6 py-4" style={{ color: '#2C3E50' }}>
-                          {claim.policyholder_name}
-                        </td>
-                        <td className="px-6 py-4 font-medium" style={{ color: '#2C3E50' }}>
-                          ${parseFloat(claim.claimed_amount).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center space-x-2">
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full"
-                                style={{
-                                  width: `${fraudScore * 100}%`,
-                                  backgroundColor: getRiskColor(fraudScore),
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>
-                              {(fraudScore * 100).toFixed(0)}%
+                  {highRiskClaims.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-6 py-16 text-center">
+                        <Shield className="w-12 h-12 mx-auto mb-3" style={{ color: '#E5E7EB' }} />
+                        <p className="text-sm font-semibold" style={{ color: '#2C3E50' }}>
+                          No high-risk claims detected
+                        </p>
+                        <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                          All recent claims passed fraud checks
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    highRiskClaims.map((claim) => {
+                      const fraudScore = claim.fraud_probability || 0;
+                      const riskColor = getRiskColor(fraudScore);
+                      return (
+                        <tr key={claim.claim_id}
+                            onClick={() => navigate(`/claims/${claim.claim_id}`)}
+                            className="border-t transition-colors cursor-pointer group"
+                            style={{ borderColor: '#F3F4F6' }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#FFF5F3')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+
+                          <td className="px-6 py-4">
+                            <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg"
+                                  style={{ backgroundColor: '#F3F4F6', color: '#2C3E50' }}>
+                              {claim.claim_number}
                             </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                            style={{ backgroundColor: getRiskColor(riskLevel) }}
-                          >
-                            {riskLevel}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4" style={{ color: '#7F8C8D' }}>
-                          {new Date(claim.submitted_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex space-x-2">
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-medium truncate max-w-48"
+                               style={{ color: '#2C3E50' }}>
+                              {claim.policyholder_name || '—'}
+                            </p>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span className="text-sm" style={{ color: '#7F8C8D' }}>
+                              {claim.claim_type || '—'}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-bold" style={{ color: '#2C3E50' }}>
+                              {fmtMoney(claim.claimed_amount, currency)}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 max-w-24">
+                                <div className="h-2 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
+                                  <div className="h-2 rounded-full transition-all"
+                                       style={{ 
+                                         width: `${fraudScore * 100}%`,
+                                         backgroundColor: fraudScore >= 0.7 ? '#EF4444' : fraudScore >= 0.5 ? '#FCD34D' : '#9CA3AF'
+                                       }} />
+                                </div>
+                              </div>
+                              <span className="px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap min-w-14 text-center"
+                                    style={{ backgroundColor: riskColor.bg, color: riskColor.text }}>
+                                {(fraudScore * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-1.5 text-xs"
+                                 style={{ color: '#9CA3AF' }}>
+                              <Calendar className="w-3.5 h-3.5" />
+                              {fmtDate(claim.submitted_date)}
+                            </div>
+                          </td>
+
+                          <td className="px-6 py-4">
                             <button
-                              onClick={() => handleAnalyzeClaim(claim)}
-                              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                              title="Analyze Fraud"
-                            >
-                              <Eye className="w-5 h-5" style={{ color: '#17A2B8' }} />
+                              className="p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                              style={{ backgroundColor: '#F8F9FA', color: '#7F8C8D' }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#FF6B4A';
+                                e.currentTarget.style.color = 'white';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#F8F9FA';
+                                e.currentTarget.style.color = '#7F8C8D';
+                              }}>
+                              <Eye className="w-4 h-4" />
                             </button>
-                            {claim.is_fraudulent && (
-                              <button
-                                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                title="Flagged as Fraud"
-                              >
-                                <Flag className="w-5 h-5" style={{ color: '#DC3545' }} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
-
-            {filteredClaims.length === 0 && (
-              <div className="p-8 text-center" style={{ color: '#7F8C8D' }}>
-                No claims found matching your criteria
-              </div>
-            )}
           </div>
         </div>
       </div>
-
-      {/* Side Panel */}
-      {selectedClaim && (
-        <div className="w-96 border-l bg-white overflow-y-auto" style={{ borderColor: '#E0E0E0' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold" style={{ color: '#2C3E50' }}>
-                Fraud Analysis
-              </h2>
-              <button
-                onClick={() => {
-                  setSelectedClaim(null);
-                  setFraudAnalysis(null);
-                }}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <X className="w-5 h-5" style={{ color: '#7F8C8D' }} />
-              </button>
-            </div>
-
-            {analyzing ? (
-              <div className="text-center py-8">
-                <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4" style={{ color: '#FF6B4A' }} />
-                <p style={{ color: '#7F8C8D' }}>Analyzing claim for fraud...</p>
-              </div>
-            ) : fraudAnalysis ? (
-              <>
-                {/* Claim Info */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-lg font-bold" style={{ color: '#2C3E50' }}>
-                      {fraudAnalysis.claim_number}
-                    </span>
-                    <span
-                      className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                      style={{ backgroundColor: getRiskColor(fraudAnalysis.fraud_analysis.risk_level) }}
-                    >
-                      {fraudAnalysis.fraud_analysis.risk_level}
-                    </span>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span style={{ color: '#7F8C8D' }}>Amount:</span>
-                      <span className="font-medium" style={{ color: '#2C3E50' }}>
-                        ${parseFloat(fraudAnalysis.claimed_amount || selectedClaim.claimed_amount).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span style={{ color: '#7F8C8D' }}>Analyzed:</span>
-                      <span style={{ color: '#2C3E50' }}>
-                        {new Date(fraudAnalysis.analyzed_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Fraud Score */}
-                <div className="mb-6">
-                  <h3 className="font-bold mb-3" style={{ color: '#2C3E50' }}>
-                    Fraud Probability
-                  </h3>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span style={{ color: '#7F8C8D' }}>Overall Score</span>
-                      <span className="font-medium" style={{ color: '#2C3E50' }}>
-                        {(fraudAnalysis.fraud_analysis.fraud_probability * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div
-                        className="h-3 rounded-full transition-all"
-                        style={{
-                          width: `${fraudAnalysis.fraud_analysis.fraud_probability * 100}%`,
-                          backgroundColor: getRiskColor(fraudAnalysis.fraud_analysis.risk_level),
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
-                    <div className="p-2 rounded" style={{ backgroundColor: '#F8F9FA' }}>
-                      <span style={{ color: '#7F8C8D' }}>ML Score: </span>
-                      <span className="font-medium" style={{ color: '#2C3E50' }}>
-                        {(fraudAnalysis.fraud_analysis.xgboost_probability * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="p-2 rounded" style={{ backgroundColor: '#F8F9FA' }}>
-                      <span style={{ color: '#7F8C8D' }}>Anomaly: </span>
-                      <span className="font-medium" style={{ color: '#2C3E50' }}>
-                        {(fraudAnalysis.fraud_analysis.anomaly_score * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Risk Indicators */}
-                <div className="mb-6">
-                  <h3 className="font-bold mb-3" style={{ color: '#2C3E50' }}>
-                    Risk Indicators
-                  </h3>
-                  <div className="space-y-2">
-                    {fraudAnalysis.risk_factors.map((factor, index) => (
-                      <div key={index} className="flex items-start space-x-2">
-                        {fraudAnalysis.fraud_analysis.fraud_probability > 0.5 ? (
-                          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#DC3545' }} />
-                        ) : (
-                          <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#28A745' }} />
-                        )}
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>{factor}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Recommendation */}
-                <div className="p-4 rounded-lg mb-6" style={{ backgroundColor: '#F0F9FF', border: '1px solid #17A2B8' }}>
-                  <h3 className="font-bold mb-2" style={{ color: '#2C3E50' }}>
-                    Recommendation
-                  </h3>
-                  <p className="text-sm mb-2" style={{ color: '#2C3E50' }}>
-                    <strong>Action:</strong> {fraudAnalysis.recommendation.replace(/_/g, ' ')}
-                  </p>
-                  <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                    {fraudAnalysis.explanation}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="space-y-3">
-                  <button
-                    className="w-full py-2 px-4 rounded-lg font-medium transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ 
-                      backgroundColor: fraudAnalysis.fraud_analysis.fraud_probability > 0.6 ? '#DC3545' : '#28A745',
-                      color: '#FFFFFF' 
-                    }}
-                    onClick={fraudAnalysis.fraud_analysis.fraud_probability > 0.6 ? handleRejectClaim : handleApproveClaim}
-                    disabled={analyzing}
-                  >
-                    {analyzing ? 'Processing...' : (fraudAnalysis.fraud_analysis.fraud_probability > 0.6 ? 'Flag as Fraud' : 'Approve Claim')}
-                  </button>
-                  <button
-                    className="w-full py-2 px-4 rounded-lg font-medium border transition-all hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ borderColor: '#E0E0E0', color: '#2C3E50' }}
-                    onClick={handleRequestInvestigation}
-                    disabled={analyzing}
-                  >
-                    Request Investigation
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-8" style={{ color: '#7F8C8D' }}>
-                <p>Click "Analyze" to see fraud detection results</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

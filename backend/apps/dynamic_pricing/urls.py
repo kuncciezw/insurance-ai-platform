@@ -2,10 +2,10 @@
 URL Configuration for Dynamic Pricing API
 """
 from django.urls import path
-from rest_framework.routers import SimpleRouter  # ← Changed this
+from rest_framework.routers import SimpleRouter
 from . import views
 
-router = SimpleRouter()  # ← Changed this
+router = SimpleRouter()
 router.register(r'quotes', views.QuoteViewSet, basename='quote')
 router.register(r'price-history', views.PriceHistoryViewSet, basename='price-history')
 
