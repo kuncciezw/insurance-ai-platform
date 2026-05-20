@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePricingSettings } from '../contexts/PricingSettingsContext';
 import { api } from '../services/api';
 import Sidebar from './Sidebar';
 import { useNotification } from './notifications/useNotification';
@@ -32,16 +33,6 @@ const nextYearISO = () => {
   d.setFullYear(d.getFullYear() + 1);
   return d.toISOString().split('T')[0];
 };
-
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
-const coverageForLevel = (marketValue, level) =>
-  parseFloat(marketValue || 0) *
-  ({ BASIC: 0.8, STANDARD: 1.0, PREMIUM: 1.2 }[level] ?? 1.0);
-
-const deductibleForLevel = (coverage, level) =>
-  coverage * ({ BASIC: 0.15, STANDARD: 0.1, PREMIUM: 0.05 }[level] ?? 0.1);
-
-
 
 const mkPolicyNum = () =>
   `POL-${Math.random().toString(36).substr(2, 12).toUpperCase().padEnd(12, '0')}`;
@@ -75,12 +66,6 @@ const COVERAGE_HINTS = {
   STANDARD: { pct: '100%', ded: '10%' },
   PREMIUM:  { pct: '120%', ded: '5%'  },
 };
-
-const ADD_ONS = [
-  { key: 'has_roadside_assistance', label: 'Roadside Assistance', price: '+$50/yr' },
-  { key: 'has_rental_coverage',     label: 'Rental Coverage',     price: '+$75/yr' },
-  { key: 'has_glass_coverage',      label: 'Glass Coverage',      price: '+$30/yr' },
-];
 
 const blankForm = () => ({
   policyholder: '',
@@ -144,6 +129,7 @@ export default function Policies() {
   const location = useLocation();
   const { fmtMoney } = useCurrencyFormatter();
   const { user } = useAuth();
+  const { settings: pricingSettings } = usePricingSettings();
   const { showNotification, NotificationContainer } = useNotification();
   const { showConfirm, ConfirmDialog } = useConfirm();
 
@@ -154,7 +140,7 @@ export default function Policies() {
 
   // Modal
   const [showModal, setShowModal] = useState(false);
-  const [modalStep, setModalStep] = useState(1);   // 1 = details, 2 = premium
+  const [modalStep, setModalStep] = useState(1);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData]   = useState(blankForm());
   const [isSaving, setIsSaving]   = useState(false);
@@ -179,6 +165,25 @@ export default function Policies() {
   const debounceRef    = useRef(null);
   const phDebounceRef  = useRef(null);
   const vehDebounceRef = useRef(null);
+
+  // Build dynamic add-ons array from pricing settings
+  const ADD_ONS = pricingSettings ? [
+    { 
+      key: 'has_roadside_assistance', 
+      label: 'Roadside Assistance', 
+      price: `+${fmtMoney(pricingSettings.addon_roadside_assistance, currency)}/yr` 
+    },
+    { 
+      key: 'has_rental_coverage', 
+      label: 'Rental Coverage', 
+      price: `+${fmtMoney(pricingSettings.addon_rental_coverage, currency)}/yr` 
+    },
+    { 
+      key: 'has_glass_coverage', 
+      label: 'Glass Coverage', 
+      price: `+${fmtMoney(pricingSettings.addon_glass_coverage, currency)}/yr` 
+    },
+  ] : [];
 
   // ═══ Effects ═══════════════════════════════════════════════════════════════
 
@@ -299,21 +304,21 @@ export default function Policies() {
   // ═══ Premium calc ══════════════════════════════════════════════════════════
 
   const runPremiumCalc = async () => {
-    if (!selectedPH || !selectedVeh) return;
+    if (!selectedPH || !selectedVeh || !pricingSettings) return;
     setIsCalcing(true);
-    const vVal = parseFloat(selectedVeh.market_value || 0);
-    const cov  = coverageForLevel(vVal, formData.coverage_level);
-    const ded  = deductibleForLevel(cov, formData.coverage_level);
+    
     try {
+      const vVal = parseFloat(selectedVeh.market_value || 0);
+      
       const res = await api.calculatePremium({
         policy_type:    formData.policy_type,
         coverage_level: formData.coverage_level,
-        coverage_amount: cov,
-        deductible: ded,
+        coverage_amount: vVal * 1.0, // Backend will calculate actual coverage
+        deductible: vVal * 0.1,       // Backend will calculate actual deductible
         customer_age:              selectedPH.age            ?? 30,
         customer_credit_score:     selectedPH.credit_score   ?? 650,
         customer_years_experience: selectedPH.years_with_company ?? 0,
-        vehicle_year:  selectedVeh.manufacture_year,
+        vehicle_manufacture_year:  selectedVeh.manufacture_year,
         vehicle_make:  selectedVeh.make,
         vehicle_model: selectedVeh.model,
         vehicle_value: vVal,
@@ -323,21 +328,23 @@ export default function Policies() {
         has_rental_coverage:     formData.has_rental_coverage,
         has_glass_coverage:      formData.has_glass_coverage,
       });
+      
       setPremiumData({
         premium_amount:  res.final_premium,
-        coverage_amount: cov,
-        deductible:      ded,
+        coverage_amount: res.breakdown.coverage_amount,
+        deductible:      res.breakdown.deductible,
         confidence:      res.confidence_score,
         ml_base:         res.ml_predicted_premium,
         risk_adj:        res.risk_adjustment,
         discounts:       res.discount_amount,
       });
-    } catch {
-      const vVal2 = parseFloat(selectedVeh.market_value || 0);
-      const cov2  = coverageForLevel(vVal2, formData.coverage_level);
-      const ded2  = deductibleForLevel(cov2, formData.coverage_level);
-      setPremiumData({ premium_amount: vVal2 * 0.05, coverage_amount: cov2, deductible: ded2, confidence: null, ml_base: null });
-    } finally { setIsCalcing(false); }
+    } catch (err) {
+      console.error('Premium calculation failed:', err);
+      showNotification('Failed to calculate premium. Please try again.', 'error');
+      setPremiumData(null);
+    } finally { 
+      setIsCalcing(false); 
+    }
   };
 
   // ═══ Select helpers ════════════════════════════════════════════════════════
@@ -829,24 +836,31 @@ export default function Policies() {
                   {/* Add-ons */}
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7F8C8D' }}>Optional Add-ons</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      {ADD_ONS.map(({ key, label, price }) => {
-                        const active = formData[key];
-                        return (
-                          <label key={key}
-                            className="flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200"
-                            style={{ borderColor: active ? '#FF6B4A' : '#E5E7EB', backgroundColor: active ? '#FFF5F3' : 'white' }}>
-                            <input type="checkbox" checked={active}
-                              onChange={(e) => setFormData((p) => ({ ...p, [key]: e.target.checked }))}
-                              className="mt-0.5 w-4 h-4 rounded flex-shrink-0" style={{ accentColor: '#FF6B4A' }} />
-                            <div>
-                              <div className="text-sm font-semibold leading-tight" style={{ color: '#2C3E50' }}>{label}</div>
-                              <div className="text-xs mt-0.5 font-medium" style={{ color: active ? '#FF6B4A' : '#9CA3AF' }}>{price}</div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
+                    {!pricingSettings ? (
+                      <div className="text-center py-4">
+                        <Loader2 className="inline-block w-5 h-5 animate-spin" style={{ color: '#9CA3AF' }} />
+                        <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>Loading pricing settings...</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-3">
+                        {ADD_ONS.map(({ key, label, price }) => {
+                          const active = formData[key];
+                          return (
+                            <label key={key}
+                              className="flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200"
+                              style={{ borderColor: active ? '#FF6B4A' : '#E5E7EB', backgroundColor: active ? '#FFF5F3' : 'white' }}>
+                              <input type="checkbox" checked={active}
+                                onChange={(e) => setFormData((p) => ({ ...p, [key]: e.target.checked }))}
+                                className="mt-0.5 w-4 h-4 rounded flex-shrink-0" style={{ accentColor: '#FF6B4A' }} />
+                              <div>
+                                <div className="text-sm font-semibold leading-tight" style={{ color: '#2C3E50' }}>{label}</div>
+                                <div className="text-xs mt-0.5 font-medium" style={{ color: active ? '#FF6B4A' : '#9CA3AF' }}>{price}</div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -971,8 +985,6 @@ export default function Policies() {
                       </div>
                     )}
                   </div>
-
-          
                 </div>
               )}
             </div>

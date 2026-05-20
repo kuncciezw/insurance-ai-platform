@@ -1,26 +1,17 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { usePricingSettings } from '../contexts/PricingSettingsContext';
 import {
   TrendingUp, Calculator, AlertCircle, Loader2,
   ArrowLeftRight, Car, Wrench, Lock, ChevronDown,
 } from 'lucide-react';
 
-const EXCHANGE_RATE = 25; // 1 USD = 25 ZWG
 
-/**
- * EmbeddedLossAssessor
- *
- * A self-contained loss-assessment form that is pre-populated from a claim
- * already loaded in ClaimDetail. It skips the claim-search step entirely and
- * calls the same api.estimateClaimDirect() endpoint.
- *
- * Props:
- *   claim   – full claim object from ClaimDetail
- *   vehicle – vehicle object (may be null if not yet loaded)
- */
 export default function EmbeddedLossAssessor({ claim, vehicle }) {
   const [currency,  setCurrency]  = useState('USD');
   const [isLoading, setIsLoading] = useState(false);
+  const { settings } = usePricingSettings();
+  const exchangeRate = settings?.zwg_usd_exchange_rate;
   const [result,    setResult]    = useState(null);
   const [error,     setError]     = useState('');
 
@@ -39,6 +30,8 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
     parts_availability:   'Available',
     labor_hours_estimate: 20,
   });
+
+
 
   // Populate from props whenever they change
   useEffect(() => {
@@ -65,7 +58,7 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
     if (usdVal === '' || usdVal == null) return '—';
     const n = Number(usdVal);
     if (isNaN(n)) return '—';
-    const displayed = currency === 'ZWG' ? n * EXCHANGE_RATE : n;
+    const displayed = currency === 'ZWG' ? n * exchangeRate : n;
     return `${sym}${displayed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
@@ -83,7 +76,8 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
   const estimatedUSD = result ? Number(result.estimated_amount) : 0;
   const accuracy     = getAccuracy(claimedUSD, estimatedUSD);
   const diffUSD      = Math.abs(claimedUSD - estimatedUSD);
-  const isLargeDiff  = diffUSD > claimedUSD * 0.2;
+  const varianceThreshold = settings?.threshold_variance_warning;
+  const isLargeDiff = diffUSD > claimedUSD * varianceThreshold;
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -306,7 +300,7 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
                   placeholder="e.g. 20"
                 />
                 <p className="text-xs mt-1" style={{ color: '#7F8C8D' }}>
-                  Estimated @ $75 / hr · affects final cost
+                  Estimated @ ${settings?.labor_rate_per_hour} / hr · affects final cost
                 </p>
               </div>
             </div>

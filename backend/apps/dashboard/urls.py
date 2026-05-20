@@ -38,7 +38,7 @@ dashboard_patterns = [
     # Company Profile endpoint
     path('company-profile/', get_company_profile, name='get_company_profile'),
     
-    # Roles & Permissions endpoints - FIXED: Handle both with and without trailing slash
+    # Roles & Permissions endpoints
     re_path(r'^roles/permissions/audit/?$', get_permission_audit_log, name='permission_audit_log'),
     re_path(r'^roles/permissions/bulk/?$', bulk_update_permissions, name='bulk_update_permissions'),
     re_path(r'^roles/permissions/?$', get_roles_permissions, name='roles_permissions'),

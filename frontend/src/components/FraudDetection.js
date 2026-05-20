@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import { usePricingSettings } from '../contexts/PricingSettingsContext';
 import { 
   Shield, AlertTriangle, Eye, 
   Calendar, DollarSign, Loader2, RefreshCw 
@@ -18,6 +19,9 @@ export default function FraudDetection() {
   const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState('30days');
   const [currency, setCurrency] = useState('USD');
+  const { settings: pricingSettings } = usePricingSettings();
+  const rejectThresh  = pricingSettings?.threshold_fraud_reject;
+  const warningThresh = pricingSettings?.threshold_variance_warning;
 
   useEffect(() => {
     loadDashboard();
@@ -29,7 +33,7 @@ export default function FraudDetection() {
       const [statsData, riskData, claimsData] = await Promise.all([
         api.request('/fraud-detection/fraud/statistics/'),
         api.request(`/fraud-detection/stats/?period=${period}`),
-        api.request('/fraud-detection/fraud/high-risk-claims/?threshold=0.6&limit=20'),
+        api.request(`/fraud-detection/fraud/high-risk-claims/?threshold=${warningThresh}&limit=20`),
       ]);
 
       setStats(statsData);
@@ -43,9 +47,9 @@ export default function FraudDetection() {
   };
 
   const getRiskColor = (score) => {
-    if (score >= 0.7) return { bg: '#FEE2E2', text: '#991B1B' };
-    if (score >= 0.5) return { bg: '#FEF3C7', text: '#92400E' };
-    return { bg: '#F3F4F6', text: '#6B7280' };
+    if (score >= rejectThresh)  return { bg: '#FEE2E2', text: '#991B1B' };
+    if (score >= warningThresh) return { bg: '#FEF3C7', text: '#92400E' };
+    return                             { bg: '#F3F4F6', text: '#6B7280' };
   };
 
   const fmtDate = (d) => {
@@ -258,7 +262,7 @@ export default function FraudDetection() {
                                   <div className="h-2 rounded-full transition-all"
                                        style={{ 
                                          width: `${fraudScore * 100}%`,
-                                         backgroundColor: fraudScore >= 0.7 ? '#EF4444' : fraudScore >= 0.5 ? '#FCD34D' : '#9CA3AF'
+                                         backgroundColor: fraudScore >= rejectThresh ? '#EF4444' : fraudScore >= warningThresh ? '#FCD34D' : '#9CA3AF'
                                        }} />
                                 </div>
                               </div>

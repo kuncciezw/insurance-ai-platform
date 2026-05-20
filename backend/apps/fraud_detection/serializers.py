@@ -114,8 +114,9 @@ class PolicyListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Policy
         fields = [
-            'id', 'policy_number', 'policyholder_name', 'vehicle_display',
-            'policy_type', 'status', 'currency', 'premium_amount', 'start_date', 'end_date'
+            'id', 'policy_number', 'policyholder', 'policyholder_name',
+            'vehicle', 'vehicle_display', 'policy_type', 'status',      
+            'currency', 'premium_amount', 'start_date', 'end_date'
         ]
     
     def get_vehicle_display(self, obj):

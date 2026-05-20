@@ -1,6 +1,6 @@
 """
-ML-Powered Dynamic Pricing API Views - FIXED
-Provides endpoints for premium calculation using trained ML models
+ML-Powered Dynamic Pricing API Views
+Provides endpoints for premium calculation using trained ML models and Global Settings
 """
 
 from rest_framework import status, viewsets
@@ -22,7 +22,7 @@ from .serializers import (
 from apps.fraud_detection.models import Policyholder, Vehicle, Policy
 from ml_models.model_loader import get_model_loader
 from ml_models.feature_engineering import FeatureEngineer
-
+from system_settings.models import GlobalPricingSettings
 
 # Initialize model loader (singleton pattern)
 model_loader = get_model_loader()
@@ -32,7 +32,6 @@ feature_engineer = FeatureEngineer()
 class QuoteViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Quote management
-
     List, create, retrieve, update, and delete quotes
     """
     queryset = Quote.objects.all()
@@ -49,12 +48,10 @@ class QuoteViewSet(viewsets.ModelViewSet):
             'policyholder', 'vehicle', 'converted_policy'
         )
 
-        # Filter by status
         status_param = self.request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
 
-        # Filter by validity
         valid_only = self.request.query_params.get('valid_only')
         if valid_only == 'true':
             today = date.today()
@@ -63,7 +60,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
                 valid_until__gte=today
             )
 
-        # Filter by policyholder
         policyholder_id = self.request.query_params.get('policyholder_id')
         if policyholder_id:
             queryset = queryset.filter(policyholder_id=policyholder_id)
@@ -121,7 +117,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
 class PriceHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for PriceHistory (read-only)
-
     View historical pricing data for policies
     """
     queryset = PriceHistory.objects.all()
@@ -133,22 +128,18 @@ class PriceHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         return PriceHistorySerializer
 
     def get_queryset(self):
-        """Filter price history with query parameters"""
         queryset = PriceHistory.objects.select_related(
             'policy', 'policy__policyholder', 'quote'
         )
 
-        # Filter by policy
         policy_id = self.request.query_params.get('policy_id')
         if policy_id:
             queryset = queryset.filter(policy_id=policy_id)
 
-        # Filter by change reason
         reason = self.request.query_params.get('reason')
         if reason:
             queryset = queryset.filter(change_reason=reason)
 
-        # Filter by date range
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         if start_date:
@@ -160,15 +151,9 @@ class PriceHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 def prepare_pricing_features(data, policyholder=None, vehicle=None):
-    """
-    Prepare features for ML pricing model
-
-    This function creates a DataFrame with all required features
-    that match the model's expected input
-    """
+    """Prepare features for ML pricing model"""
     current_year = date.today().year
 
-    # Get policyholder features
     if policyholder:
         age = policyholder.age
         gender = policyholder.gender
@@ -181,15 +166,12 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
         age = data.get('customer_age')
         credit_score = data.get('customer_credit_score')
         years_with_company = data.get('customer_years_experience', 0)
-        # Set defaults for missing fields
         gender = 'M'
         marital_status = 'Single'
         occupation = 'Professional'
         state = 'CA'
 
-    # Get vehicle features
     if vehicle:
-        # UPDATED: vehicle.year → vehicle.manufacture_year
         vehicle_year = vehicle.manufacture_year
         vehicle_value = float(vehicle.market_value)
         vehicle_type = vehicle.vehicle_type
@@ -200,12 +182,10 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
         is_modified = vehicle.is_modified
         odometer_reading = vehicle.odometer_reading
     else:
-        # UPDATED: data.get('vehicle_year') → data.get('vehicle_manufacture_year')
         vehicle_year = data.get('vehicle_manufacture_year')
         vehicle_value = float(data.get('vehicle_value'))
         has_anti_theft = data.get('vehicle_has_anti_theft', False)
         is_modified = data.get('vehicle_is_modified', False)
-        # Set defaults for missing fields
         vehicle_type = 'Sedan'
         fuel_type = 'Petrol'
         has_airbags = True
@@ -214,7 +194,6 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
 
     vehicle_age = current_year - vehicle_year
 
-    # Encode categorical features
     gender_map = {'M': 0, 'F': 1, 'Other': 2}
     marital_map = {'Single': 0, 'Married': 1, 'Divorced': 2, 'Widowed': 3}
     occupation_map = {'Professional': 0, 'Business': 1, 'Employee': 2, 'Self-Employed': 3}
@@ -224,7 +203,6 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
     coverage_level_map = {'BASIC': 0, 'STANDARD': 1, 'PREMIUM': 2}
     state_map = {s: i for i, s in enumerate(['CA', 'NY', 'TX', 'FL', 'IL'])}
 
-    # Create feature dictionary matching model's expected features
     features = {
         'age': age,
         'gender_encoded': gender_map.get(gender, 0),
@@ -251,171 +229,169 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
     return pd.DataFrame([features])
 
 
+def _apply_global_pricing_rules(ml_premium: Decimal, customer_age: int, customer_credit_score: int, 
+                                years_with_company: int, vehicle_age: int, vehicle_has_anti_theft: bool, 
+                                vehicle_is_modified: bool, has_roadside: bool, has_rental: bool, has_glass: bool):
+    """
+    Private helper to calculate dynamic risk adjustments, discounts, and optional coverages
+    using the singleton GlobalPricingSettings.
+    """
+    settings = GlobalPricingSettings.get_solo()
+    
+    risk_factors = {}
+    risk_adjustment = Decimal('0.00')
+
+    # Age factors (Dynamic)
+    if customer_age < 25:
+        surcharge = ml_premium * Decimal(str(settings.surcharge_young_driver))
+        risk_adjustment += surcharge
+        risk_factors['young_driver'] = {
+            'impact': f"+{float(settings.surcharge_young_driver) * 100:.0f}%",
+            'reason': 'Driver under 25 years old'
+        }
+    elif customer_age > 65:
+        surcharge = ml_premium * Decimal(str(settings.surcharge_senior_driver))
+        risk_adjustment += surcharge
+        risk_factors['senior_driver'] = {
+            'impact': f"+{float(settings.surcharge_senior_driver) * 100:.0f}%",
+            'reason': 'Driver over 65 years old'
+        }
+
+    # Credit score factor (Dynamic)
+    if customer_credit_score < 600:
+        surcharge = ml_premium * Decimal(str(settings.surcharge_poor_credit))
+        risk_adjustment += surcharge
+        risk_factors['low_credit'] = {
+            'impact': f"+{float(settings.surcharge_poor_credit) * 100:.0f}%",
+            'reason': 'Credit score below 600'
+        }
+
+    # Vehicle age factor (Heuristic standard)
+    if vehicle_age > 10:
+        risk_adjustment += ml_premium * Decimal('0.10')
+        risk_factors['old_vehicle'] = {
+            'impact': '+10%',
+            'reason': f'Vehicle is {vehicle_age} years old'
+        }
+
+    # Modified vehicle (Heuristic standard)
+    if vehicle_is_modified:
+        risk_adjustment += ml_premium * Decimal('0.15')
+        risk_factors['modified_vehicle'] = {
+            'impact': '+15%',
+            'reason': 'Vehicle has modifications'
+        }
+
+    # Calculate discounts
+    discount_amount = Decimal('0.00')
+    discounts = {}
+
+    # Good credit discount (Dynamic)
+    if customer_credit_score >= 750:
+        discount = ml_premium * Decimal(str(settings.discount_excellent_credit))
+        discount_amount += discount
+        discounts['good_credit'] = {
+            'amount': float(discount),
+            'reason': 'Credit score 750+'
+        }
+
+    # Anti-theft discount (Dynamic)
+    if vehicle_has_anti_theft:
+        discount = ml_premium * Decimal(str(settings.discount_anti_theft))
+        discount_amount += discount
+        discounts['anti_theft'] = {
+            'amount': float(discount),
+            'reason': 'Anti-theft device installed'
+        }
+
+    # Loyalty discount (Heuristic standard)
+    if years_with_company >= 5:
+        discount = ml_premium * Decimal('0.10')
+        discount_amount += discount
+        discounts['loyalty'] = {
+            'amount': float(discount),
+            'reason': f'{years_with_company} years with company'
+        }
+
+    # Add optional coverages (Dynamic flat fees)
+    optional_costs = {}
+    optional_fees_total = Decimal('0.00')
+    
+    if has_roadside:
+        optional_costs['roadside_assistance'] = float(settings.addon_roadside_assistance)
+        optional_fees_total += Decimal(str(settings.addon_roadside_assistance))
+    if has_rental:
+        optional_costs['rental_coverage'] = float(settings.addon_rental_coverage)
+        optional_fees_total += Decimal(str(settings.addon_rental_coverage))
+    if has_glass:
+        optional_costs['glass_coverage'] = float(settings.addon_glass_coverage)
+        optional_fees_total += Decimal(str(settings.addon_glass_coverage))
+
+    # Calculate final premium and enforce global minimum premium
+    final_premium = ml_premium + risk_adjustment - discount_amount + optional_fees_total
+    final_premium = max(final_premium, Decimal(str(settings.minimum_premium)))
+
+    return risk_adjustment, risk_factors, discount_amount, discounts, optional_costs, final_premium
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def calculate_premium(request):
     """
-    Calculate insurance premium using ML model
-
+    Calculate insurance premium using ML model and Global Rules
     POST /api/dynamic-pricing/calculate-premium/
     """
-
     try:
-        # Validate input
         input_serializer = QuoteCalculationInputSerializer(data=request.data)
         if not input_serializer.is_valid():
-            return Response(
-                input_serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(input_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = input_serializer.validated_data
 
-        # Get policyholder object if ID provided
         policyholder = None
         if data.get('policyholder_id'):
             try:
                 policyholder = Policyholder.objects.get(id=data['policyholder_id'])
             except Policyholder.DoesNotExist:
-                return Response(
-                    {'error': 'Policyholder not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({'error': 'Policyholder not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Get vehicle object if ID provided
         vehicle = None
         if data.get('vehicle_id'):
             try:
                 vehicle = Vehicle.objects.get(id=data['vehicle_id'])
             except Vehicle.DoesNotExist:
-                return Response(
-                    {'error': 'Vehicle not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({'error': 'Vehicle not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Prepare features for ML model
         pricing_data = prepare_pricing_features(data, policyholder, vehicle)
 
-        # Get ML prediction
         try:
             prediction = model_loader.predict_premium(pricing_data.iloc[0])
             ml_premium = Decimal(str(prediction['predicted_premium']))
             confidence = prediction.get('confidence', 0.85)
         except Exception as e:
-            return Response(
-                {'error': f'ML prediction failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'error': f'ML prediction failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Extract customer and vehicle data for risk calculation
         customer_age = policyholder.age if policyholder else data.get('customer_age')
         customer_credit_score = policyholder.credit_score if policyholder else data.get('customer_credit_score')
         years_with_company = policyholder.years_with_company if policyholder else data.get('customer_years_experience', 0)
 
         current_year = date.today().year
-        # UPDATED: vehicle.year → vehicle.manufacture_year; data key → vehicle_manufacture_year
         vehicle_year = vehicle.manufacture_year if vehicle else data.get('vehicle_manufacture_year')
         vehicle_age = current_year - vehicle_year
         vehicle_has_anti_theft = vehicle.has_anti_theft if vehicle else data.get('vehicle_has_anti_theft', False)
         vehicle_is_modified = vehicle.is_modified if vehicle else data.get('vehicle_is_modified', False)
 
-        # Calculate risk factors
-        risk_factors = {}
-        risk_adjustment = Decimal('0.00')
+        # Apply Global Pricing Rules using Helper
+        risk_adjustment, risk_factors, discount_amount, discounts, optional_costs, final_premium = _apply_global_pricing_rules(
+            ml_premium, customer_age, customer_credit_score, years_with_company,
+            vehicle_age, vehicle_has_anti_theft, vehicle_is_modified,
+            data.get('has_roadside_assistance', False), 
+            data.get('has_rental_coverage', False), 
+            data.get('has_glass_coverage', False)
+        )
 
-        # Age factor
-        if customer_age < 25:
-            risk_adjustment += ml_premium * Decimal('0.15')
-            risk_factors['young_driver'] = {
-                'factor': 1.25,
-                'impact': '+15%',
-                'reason': 'Driver under 25 years old'
-            }
-        elif customer_age > 65:
-            risk_adjustment += ml_premium * Decimal('0.10')
-            risk_factors['senior_driver'] = {
-                'factor': 1.15,
-                'impact': '+10%',
-                'reason': 'Driver over 65 years old'
-            }
-
-        # Credit score factor
-        if customer_credit_score < 600:
-            risk_adjustment += ml_premium * Decimal('0.20')
-            risk_factors['low_credit'] = {
-                'impact': '+20%',
-                'reason': 'Credit score below 600'
-            }
-
-        # Vehicle age factor
-        if vehicle_age > 10:
-            risk_adjustment += ml_premium * Decimal('0.10')
-            risk_factors['old_vehicle'] = {
-                'impact': '+10%',
-                'reason': f'Vehicle is {vehicle_age} years old'
-            }
-
-        # Modified vehicle
-        if vehicle_is_modified:
-            risk_adjustment += ml_premium * Decimal('0.15')
-            risk_factors['modified_vehicle'] = {
-                'impact': '+15%',
-                'reason': 'Vehicle has modifications'
-            }
-
-        # Calculate discounts
-        discount_amount = Decimal('0.00')
-        discounts = {}
-
-        # Good credit discount
-        if customer_credit_score >= 750:
-            discount = ml_premium * Decimal('0.10')
-            discount_amount += discount
-            discounts['good_credit'] = {
-                'amount': float(discount),
-                'reason': 'Credit score 750+'
-            }
-
-        # Anti-theft discount
-        if vehicle_has_anti_theft:
-            discount = ml_premium * Decimal('0.05')
-            discount_amount += discount
-            discounts['anti_theft'] = {
-                'amount': float(discount),
-                'reason': 'Anti-theft device installed'
-            }
-
-        # Loyalty discount
-        if years_with_company >= 5:
-            discount = ml_premium * Decimal('0.10')
-            discount_amount += discount
-            discounts['loyalty'] = {
-                'amount': float(discount),
-                'reason': f'{years_with_company} years with company'
-            }
-
-        # Calculate final premium
-        base_premium = ml_premium
-        final_premium = base_premium + risk_adjustment - discount_amount
-
-        # Add optional coverages
-        optional_costs = {}
-        if data.get('has_roadside_assistance'):
-            final_premium += Decimal('50.00')
-            optional_costs['roadside_assistance'] = 50.00
-        if data.get('has_rental_coverage'):
-            final_premium += Decimal('75.00')
-            optional_costs['rental_coverage'] = 75.00
-        if data.get('has_glass_coverage'):
-            final_premium += Decimal('30.00')
-            optional_costs['glass_coverage'] = 30.00
-
-        # Ensure non-negative premium
-        final_premium = max(final_premium, Decimal('100.00'))
-
-        # Build response
         response_data = {
-            'base_premium': float(base_premium),
+            'base_premium': float(ml_premium),
             'risk_adjustment': float(risk_adjustment),
             'discount_amount': float(discount_amount),
             'final_premium': float(final_premium),
@@ -438,55 +414,37 @@ def calculate_premium(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response(
-            {'error': f'Error calculating premium: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': f'Error calculating premium: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_quote(request):
     """
-    Generate a full insurance quote with ML pricing
-
+    Generate a full insurance quote with ML pricing and Global Rules
     POST /api/dynamic-pricing/generate-quote/
     """
-
     try:
-        # Validate input first
         input_serializer = QuoteCalculationInputSerializer(data=request.data)
         if not input_serializer.is_valid():
-            return Response(
-                input_serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(input_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         validated_data = input_serializer.validated_data
 
-        # Get policyholder object if ID provided
         policyholder = None
         if validated_data.get('policyholder_id'):
             try:
                 policyholder = Policyholder.objects.get(id=validated_data['policyholder_id'])
             except Policyholder.DoesNotExist:
-                return Response(
-                    {'error': 'Policyholder not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({'error': 'Policyholder not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Get vehicle object if ID provided
         vehicle = None
         if validated_data.get('vehicle_id'):
             try:
                 vehicle = Vehicle.objects.get(id=validated_data['vehicle_id'])
             except Vehicle.DoesNotExist:
-                return Response(
-                    {'error': 'Vehicle not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({'error': 'Vehicle not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Prepare features and calculate premium using ML model
         pricing_data_df = prepare_pricing_features(validated_data, policyholder, vehicle)
 
         try:
@@ -494,113 +452,29 @@ def generate_quote(request):
             ml_premium = Decimal(str(prediction['predicted_premium']))
             confidence = prediction.get('confidence', 0.85)
         except Exception as e:
-            return Response(
-                {'error': f'ML prediction failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'error': f'ML prediction failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Extract customer and vehicle data for risk calculation
         customer_age = policyholder.age if policyholder else validated_data.get('customer_age')
         customer_credit_score = policyholder.credit_score if policyholder else validated_data.get('customer_credit_score')
         years_with_company = policyholder.years_with_company if policyholder else validated_data.get('customer_years_experience', 0)
 
         current_year = date.today().year
-        # UPDATED: vehicle.year → vehicle.manufacture_year; data key → vehicle_manufacture_year
         vehicle_year = vehicle.manufacture_year if vehicle else validated_data.get('vehicle_manufacture_year')
         vehicle_age = current_year - vehicle_year
         vehicle_has_anti_theft = vehicle.has_anti_theft if vehicle else validated_data.get('vehicle_has_anti_theft', False)
         vehicle_is_modified = vehicle.is_modified if vehicle else validated_data.get('vehicle_is_modified', False)
 
-        # Calculate risk factors
-        risk_factors = {}
-        risk_adjustment = Decimal('0.00')
+        # Apply Global Pricing Rules using Helper
+        risk_adjustment, risk_factors, discount_amount, discounts, optional_costs, final_premium = _apply_global_pricing_rules(
+            ml_premium, customer_age, customer_credit_score, years_with_company,
+            vehicle_age, vehicle_has_anti_theft, vehicle_is_modified,
+            validated_data.get('has_roadside_assistance', False), 
+            validated_data.get('has_rental_coverage', False), 
+            validated_data.get('has_glass_coverage', False)
+        )
 
-        if customer_age < 25:
-            risk_adjustment += ml_premium * Decimal('0.15')
-            risk_factors['young_driver'] = {
-                'factor': 1.25,
-                'impact': '+15%',
-                'reason': 'Driver under 25 years old'
-            }
-        elif customer_age > 65:
-            risk_adjustment += ml_premium * Decimal('0.10')
-            risk_factors['senior_driver'] = {
-                'factor': 1.15,
-                'impact': '+10%',
-                'reason': 'Driver over 65 years old'
-            }
-
-        if customer_credit_score < 600:
-            risk_adjustment += ml_premium * Decimal('0.20')
-            risk_factors['low_credit'] = {
-                'impact': '+20%',
-                'reason': 'Credit score below 600'
-            }
-
-        if vehicle_age > 10:
-            risk_adjustment += ml_premium * Decimal('0.10')
-            risk_factors['old_vehicle'] = {
-                'impact': '+10%',
-                'reason': f'Vehicle is {vehicle_age} years old'
-            }
-
-        if vehicle_is_modified:
-            risk_adjustment += ml_premium * Decimal('0.15')
-            risk_factors['modified_vehicle'] = {
-                'impact': '+15%',
-                'reason': 'Vehicle has modifications'
-            }
-
-        # Calculate discounts
-        discount_amount = Decimal('0.00')
-        discounts = {}
-
-        if customer_credit_score >= 750:
-            discount = ml_premium * Decimal('0.10')
-            discount_amount += discount
-            discounts['good_credit'] = {
-                'amount': float(discount),
-                'reason': 'Credit score 750+'
-            }
-
-        if vehicle_has_anti_theft:
-            discount = ml_premium * Decimal('0.05')
-            discount_amount += discount
-            discounts['anti_theft'] = {
-                'amount': float(discount),
-                'reason': 'Anti-theft device installed'
-            }
-
-        if years_with_company >= 5:
-            discount = ml_premium * Decimal('0.10')
-            discount_amount += discount
-            discounts['loyalty'] = {
-                'amount': float(discount),
-                'reason': f'{years_with_company} years with company'
-            }
-
-        # Calculate final premium
-        base_premium = ml_premium
-        final_premium = base_premium + risk_adjustment - discount_amount
-
-        # Add optional coverages
-        optional_costs = {}
-        if validated_data.get('has_roadside_assistance'):
-            final_premium += Decimal('50.00')
-            optional_costs['roadside_assistance'] = 50.00
-        if validated_data.get('has_rental_coverage'):
-            final_premium += Decimal('75.00')
-            optional_costs['rental_coverage'] = 75.00
-        if validated_data.get('has_glass_coverage'):
-            final_premium += Decimal('30.00')
-            optional_costs['glass_coverage'] = 30.00
-
-        # Ensure non-negative premium
-        final_premium = max(final_premium, Decimal('100.00'))
-
-        # Build pricing details for response
         pricing_data = {
-            'base_premium': float(base_premium),
+            'base_premium': float(ml_premium),
             'risk_adjustment': float(risk_adjustment),
             'discount_amount': float(discount_amount),
             'final_premium': float(final_premium),
@@ -612,11 +486,8 @@ def generate_quote(request):
         }
 
         input_data = request.data
-
-        # Generate quote number
         quote_number = f"QTE-{random.randint(100000000000, 999999999999)}"
 
-        # Create quote object
         quote_data = {
             'quote_number': quote_number,
             'policy_type': input_data['policy_type'],
@@ -637,7 +508,6 @@ def generate_quote(request):
             'has_glass_coverage': input_data.get('has_glass_coverage', False),
         }
 
-        # Add policyholder if provided
         if input_data.get('policyholder_id'):
             quote_data['policyholder_id'] = input_data['policyholder_id']
         else:
@@ -647,11 +517,9 @@ def generate_quote(request):
                 'customer_years_experience': input_data.get('customer_years_experience', 0),
             })
 
-        # Add vehicle if provided
         if input_data.get('vehicle_id'):
             quote_data['vehicle_id'] = input_data['vehicle_id']
         else:
-            # UPDATED: vehicle_year → vehicle_manufacture_year
             quote_data.update({
                 'vehicle_manufacture_year': input_data['vehicle_manufacture_year'],
                 'vehicle_make': input_data['vehicle_make'],
@@ -661,16 +529,12 @@ def generate_quote(request):
                 'vehicle_is_modified': input_data.get('vehicle_is_modified', False),
             })
 
-        # Add contact info if provided
         if input_data.get('customer_email'):
             quote_data['customer_email'] = input_data['customer_email']
         if input_data.get('customer_phone'):
             quote_data['customer_phone'] = input_data['customer_phone']
 
-        # Create quote
         quote = Quote.objects.create(**quote_data)
-
-        # Serialize and return
         serializer = QuoteSerializer(quote)
 
         return Response({
@@ -680,10 +544,7 @@ def generate_quote(request):
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        return Response(
-            {'error': f'Error generating quote: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': f'Error generating quote: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -691,38 +552,31 @@ def generate_quote(request):
 def compare_prices(request):
     """
     Compare prices across different coverage levels
-
     POST /api/dynamic-pricing/compare-prices/
     """
-
     try:
         base_data = request.data.copy()
         coverage_levels = ['BASIC', 'STANDARD', 'PREMIUM']
-
         comparisons = []
 
         for level in coverage_levels:
-            # Update coverage level
             level_data = base_data.copy()
             level_data['coverage_level'] = level
 
-            # Adjust coverage amount by level
             base_coverage = float(base_data.get('coverage_amount', 50000))
             if level == 'BASIC':
                 level_data['coverage_amount'] = base_coverage * 0.7
             elif level == 'STANDARD':
                 level_data['coverage_amount'] = base_coverage
-            else:  # PREMIUM
+            else:
                 level_data['coverage_amount'] = base_coverage * 1.5
 
-            # Validate and calculate
             input_serializer = QuoteCalculationInputSerializer(data=level_data)
             if not input_serializer.is_valid():
                 continue
 
             validated_data = input_serializer.validated_data
 
-            # Get objects if IDs provided
             policyholder = None
             vehicle = None
 
@@ -738,32 +592,45 @@ def compare_prices(request):
                 except Vehicle.DoesNotExist:
                     pass
 
-            # Prepare features and predict
             pricing_data = prepare_pricing_features(validated_data, policyholder, vehicle)
 
             try:
                 prediction = model_loader.predict_premium(pricing_data.iloc[0])
                 ml_premium = Decimal(str(prediction['predicted_premium']))
 
-                # Simple calculation for comparison
-                final_premium = ml_premium
+                # Fetch variables to run accurate risk checks in comparison
+                customer_age = policyholder.age if policyholder else validated_data.get('customer_age')
+                customer_credit_score = policyholder.credit_score if policyholder else validated_data.get('customer_credit_score')
+                years_with_company = policyholder.years_with_company if policyholder else validated_data.get('customer_years_experience', 0)
+                vehicle_year = vehicle.manufacture_year if vehicle else validated_data.get('vehicle_manufacture_year')
+                vehicle_age = date.today().year - vehicle_year
+                vehicle_has_anti_theft = vehicle.has_anti_theft if vehicle else validated_data.get('vehicle_has_anti_theft', False)
+                vehicle_is_modified = vehicle.is_modified if vehicle else validated_data.get('vehicle_is_modified', False)
+
+                # Pass through the helper to get accurate representation for comparison
+                risk_adj, r_factors, disc_amt, _, _, final_premium = _apply_global_pricing_rules(
+                    ml_premium, customer_age, customer_credit_score, years_with_company,
+                    vehicle_age, vehicle_has_anti_theft, vehicle_is_modified,
+                    validated_data.get('has_roadside_assistance', False), 
+                    validated_data.get('has_rental_coverage', False), 
+                    validated_data.get('has_glass_coverage', False)
+                )
 
                 comparisons.append({
                     'coverage_level': level,
                     'coverage_amount': float(level_data['coverage_amount']),
                     'final_premium': float(final_premium),
                     'base_premium': float(ml_premium),
+                    'risk_adjustment': float(risk_adj),
+                    'discount_amount': float(disc_amt),
+                    'risk_factors': r_factors
                 })
             except Exception as e:
                 print(f"Error calculating for {level}: {e}")
                 continue
 
-        # Calculate savings
         if len(comparisons) >= 2:
-            standard_premium = next(
-                (c['final_premium'] for c in comparisons if c['coverage_level'] == 'STANDARD'),
-                None
-            )
+            standard_premium = next((c['final_premium'] for c in comparisons if c['coverage_level'] == 'STANDARD'), None)
             if standard_premium:
                 for comparison in comparisons:
                     comparison['savings_vs_standard'] = standard_premium - comparison['final_premium']
@@ -775,10 +642,7 @@ def compare_prices(request):
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response(
-            {'error': f'Error comparing prices: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': f'Error comparing prices: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -786,12 +650,9 @@ def compare_prices(request):
 def pricing_statistics(request):
     """
     Get pricing statistics and trends
-
     GET /api/dynamic-pricing/statistics/
     """
-
     try:
-        # Quote statistics
         total_quotes = Quote.objects.count()
         active_quotes = Quote.objects.filter(
             status__in=['CALCULATED', 'SENT'],
@@ -800,10 +661,8 @@ def pricing_statistics(request):
         accepted_quotes = Quote.objects.filter(status='ACCEPTED').count()
         conversion_rate = (accepted_quotes / total_quotes * 100) if total_quotes > 0 else 0
 
-        # Average premiums
         avg_premium = Quote.objects.aggregate(Avg('final_premium'))['final_premium__avg'] or 0
 
-        # By policy type
         by_policy_type = {}
         for policy_type in ['COMPREHENSIVE', 'THIRD_PARTY', 'COLLISION', 'LIABILITY']:
             quotes = Quote.objects.filter(policy_type=policy_type)
@@ -812,7 +671,6 @@ def pricing_statistics(request):
                 'avg_premium': float(quotes.aggregate(Avg('final_premium'))['final_premium__avg'] or 0)
             }
 
-        # By coverage level
         by_coverage = {}
         for level in ['BASIC', 'STANDARD', 'PREMIUM']:
             quotes = Quote.objects.filter(coverage_level=level)
@@ -821,7 +679,6 @@ def pricing_statistics(request):
                 'avg_premium': float(quotes.aggregate(Avg('final_premium'))['final_premium__avg'] or 0)
             }
 
-        # Recent trends (last 30 days)
         thirty_days_ago = timezone.now() - timedelta(days=30)
         recent_quotes = Quote.objects.filter(created_at__gte=thirty_days_ago)
 
@@ -843,7 +700,4 @@ def pricing_statistics(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response(
-            {'error': f'Error generating statistics: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': f'Error generating statistics: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -227,18 +227,20 @@ class Quote(models.Model):
         return 0
 
     def calculate_total_premium(self):
-        """Calculate total premium with adjustments"""
+        """Calculate total premium with dynamic adjustments from Global Settings"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
         total = self.base_premium + self.risk_adjustment - self.discount_amount
 
-        # Add optional coverages
         if self.has_roadside_assistance:
-            total += Decimal('50.00')
+            total += Decimal(str(settings.addon_roadside_assistance))
         if self.has_rental_coverage:
-            total += Decimal('75.00')
+            total += Decimal(str(settings.addon_rental_coverage))
         if self.has_glass_coverage:
-            total += Decimal('30.00')
+            total += Decimal(str(settings.addon_glass_coverage))
 
-        return max(total, Decimal('0.00'))
+        return max(total, Decimal(str(settings.minimum_premium)))
 
 
 class PriceHistory(models.Model):

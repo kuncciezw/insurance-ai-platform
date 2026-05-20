@@ -45,6 +45,9 @@ urlpatterns = [
     path('api/dynamic-pricing/', include('apps.dynamic_pricing.urls')),
     path('api/claims-automation/', include('apps.claims_automation.urls')),
     path('api/dashboard/', include('apps.dashboard.urls')),
+    
+    # System Settings
+    path('api/system-settings/', include('system_settings.urls')), 
 ]
 
 # Serve media files in development

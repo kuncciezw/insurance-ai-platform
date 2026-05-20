@@ -170,9 +170,11 @@ class ApiService {
           ? data.non_field_errors.join(', ') 
           : data.non_field_errors;
       } else if (typeof data === 'object') {
-        const firstError = Object.values(data).find(v => v);
-        if (firstError) {
-          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+        const firstErrorEntry = Object.entries(data).find(([key, v]) => v);
+        if (firstErrorEntry) {
+          const [field, value] = firstErrorEntry;
+          const errorText = Array.isArray(value) ? value[0] : value;
+          errorMessage = `${field}: ${errorText}`;
         }
       }
 
@@ -337,6 +339,19 @@ class ApiService {
   async getFraudStats(period = '30days') {
     return await this.request(`/fraud-detection/stats/?period=${period}`);
   }
+
+  // Global Pricing Settings
+  async getGlobalPricingSettings() {
+    return this.request('/system-settings/pricing/');
+  }
+
+  async updateGlobalPricingSettings(data) {
+    return this.request('/system-settings/pricing/', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
 
   // Policyholders — supports ?search=&page_size= for server-side searching
   async getPolicyholders(params = {}) {

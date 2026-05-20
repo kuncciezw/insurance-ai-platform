@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import EmbeddedLossAssessor from './EmbeddedLossAssessor';
 import { useNotification } from './notifications/useNotification';
 import { useCurrencyFormatter } from '../utils/currencyFormatter';
+import { usePricingSettings } from '../contexts/PricingSettingsContext';
 import {
   ArrowLeft, AlertTriangle, CheckCircle, XCircle, FileText, Shield,
   User, Car, DollarSign, Calendar, MapPin, Clock, Activity,
@@ -560,6 +561,8 @@ export default function ClaimDetail() {
   const [isLoading,     setIsLoading]     = useState(true);
   const [activeTab,     setActiveTab]     = useState('overview');
   const [currency,      setCurrency]      = useState('USD');
+  const { settings: pricingSettings } = usePricingSettings();
+
 
   // Toggle for Technical vs Plain English
   const [showTechnical, setShowTechnical] = useState(false);
@@ -651,6 +654,13 @@ export default function ClaimDetail() {
   const fraudScore = claim.fraud_score ?? 0;
   const isApproved = claim.claim_status === 'APPROVED' || claim.claim_status === 'PAID';
   const isRejected = claim.claim_status === 'REJECTED';
+
+const rejectThresh  = pricingSettings?.threshold_fraud_reject;
+const warningThresh = pricingSettings?.threshold_variance_warning;
+const riskLabel     = fraudScore >= rejectThresh  ? 'Critical risk'
+                    : fraudScore >= warningThresh ? 'High risk'
+                    : fraudScore >= 0.3           ? 'Moderate risk'
+                    : 'Low risk';
 
   const explanation    = fraudAnalysis?.model_explanation ?? {};
   const riskIncreasers = explanation.risk_increasers ?? [];
@@ -864,7 +874,7 @@ export default function ClaimDetail() {
                       {fmtPct(fraudScore)}
                     </p>
                     <p className="text-xs mt-1 font-medium" style={{ color: '#9CA3AF' }}>
-                      {fraudScore > 0.8 ? 'Critical risk' : fraudScore > 0.5 ? 'High risk' : fraudScore > 0.3 ? 'Moderate risk' : 'Low risk'}
+                      {riskLabel}
                     </p>
                     
                     {/* Integrated Auto Decision Banner */}

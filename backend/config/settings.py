@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'apps.dynamic_pricing',
     'apps.claims_automation',
     'apps.dashboard',
+    'system_settings',
 ]
 
 MIDDLEWARE = [
@@ -104,6 +105,11 @@ CACHES = {
         'TIMEOUT': 300,
     }
 }
+
+# Django Solo Caching
+SOLO_CACHE = 'default'           # Use your default Redis cache
+SOLO_CACHE_TIMEOUT = 3600        # Cache for 1 hour (same as your old code)
+SOLO_CACHE_PREFIX = 'solo'       # Optional: prefixes the cache key
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

@@ -201,15 +201,23 @@ class ClaimEstimate(models.Model):
     
     @property
     def is_within_tolerance(self):
-        """Check if estimate is within 20% of actual"""
+        """Check if estimate is within global variance threshold"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
         if self.variance_percentage is not None:
-            return self.variance_percentage <= 20
+            tolerance = float(settings.threshold_variance_warning) * 100
+            return self.variance_percentage <= tolerance
         return None
     
     @property
     def needs_review(self):
-        """Determine if estimate needs manual review"""
-        return self.processing_recommendation in ['MANUAL_REVIEW', 'DETAILED_INVESTIGATION']
+        """Determine if estimate needs manual review based on dynamic thresholds"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
+        # Claims above the 'manual_review' threshold require eyes on them
+        return self.estimated_cost >= settings.threshold_manual_review
     
     def calculate_final_estimate(self):
         """Calculate final estimate with manual adjustments"""

@@ -11,7 +11,7 @@ import CompanyProfileTab from './settings/CompanyProfileTab';
 import UsersTab from './settings/UsersTab';
 import PendingUsersTab from './settings/PendingUsersTab';
 import RolesTab from './settings/RolesTab';
-import CurrencyConversionTab from './settings/CurrencyConversionTab';
+import GlobalPricingSettingsTab from './settings/GlobalPricingSettingsTab';
 import UserManagementModal from './settings/UserManagementModal';
 import UserApprovalModal from './settings/UserApprovalModal';
 
@@ -55,7 +55,7 @@ export default function SystemSettings() {
 
   const tabs = [
     { id: 'company',   label: 'Company Profile',     icon: Building2 },
-    { id: 'currency',  label: 'Currency Settings',    icon: DollarSign },
+    { id: 'pricing',  label: 'Pricing Settings',    icon: DollarSign },
     { id: 'pending',   label: 'Pending Users',        icon: UserCheck, badge: pendingUsers.length },
     { id: 'users',     label: 'Active Users',         icon: Users },
     { id: 'roles',     label: 'Roles & Permissions',  icon: Shield },
@@ -351,8 +351,8 @@ export default function SystemSettings() {
                 />
               )}
 
-              {activeTab === 'currency' && (
-                <CurrencyConversionTab companyProfile={companyProfile} />
+              {activeTab === 'pricing' && (
+                <GlobalPricingSettingsTab companyProfile={companyProfile} />
               )}
 
               {activeTab === 'pending' && (

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CurrencyProvider } from './contexts/CurrencyContext';
+import { PricingSettingsProvider } from './contexts/PricingSettingsContext';
 
 import Login from './components/Login';
 import Register from './components/Register';
@@ -146,94 +147,96 @@ function App() {
     <Router>
       <AuthProvider>
         <CurrencyProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+          <PricingSettingsProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
 
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/onboarding"
-              element={
-                <ProtectedRoute permission="can_create_policyholders">
-                  <OnboardingWizard />
-                </ProtectedRoute>
-              }
-            />
-            
-            <Route
-              path="/policies"
-              element={
-                <ProtectedRoute>
-                  <Policies />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/onboarding"
+                element={
+                  <ProtectedRoute permission="can_create_policyholders">
+                    <OnboardingWizard />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/policies"
+                element={
+                  <ProtectedRoute>
+                    <Policies />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/policies/:id"
-              element={
-                <ProtectedRoute>
-                  <PolicyDetail />
-                </ProtectedRoute>
-              }
-            />
-            
-            <Route
-              path="/claims"
-              element={
-                <ProtectedRoute>
-                  <ClaimsList />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/policies/:id"
+                element={
+                  <ProtectedRoute>
+                    <PolicyDetail />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/claims"
+                element={
+                  <ProtectedRoute>
+                    <ClaimsList />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/claims/:id"
-              element={
-                <ProtectedRoute>
-                  <ClaimDetail />
-                </ProtectedRoute>
-              }
-            />
-            
-            <Route
-              path="/fraud-detection"
-              element={
-                <RoleBasedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'CLAIMS_ADJUSTER', 'FRAUD_INVESTIGATOR']}>
-                  <FraudDetection />
-                </RoleBasedRoute>
-              }
-            />
-            
-            <Route
-              path="/premium-calculator"
-              element={
-                <RoleBasedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'UNDERWRITER']}>
-                  <PremiumCalculator />
-                </RoleBasedRoute>
-              }
-            />
+              <Route
+                path="/claims/:id"
+                element={
+                  <ProtectedRoute>
+                    <ClaimDetail />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/fraud-detection"
+                element={
+                  <RoleBasedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'CLAIMS_ADJUSTER', 'FRAUD_INVESTIGATOR']}>
+                    <FraudDetection />
+                  </RoleBasedRoute>
+                }
+              />
+              
+              <Route
+                path="/premium-calculator"
+                element={
+                  <RoleBasedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'UNDERWRITER']}>
+                    <PremiumCalculator />
+                  </RoleBasedRoute>
+                }
+              />
 
-            <Route
-              path="/settings"
-              element={
-                <AdminRoute>
-                  <SystemSettings />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/settings"
+                element={
+                  <AdminRoute>
+                    <SystemSettings />
+                  </AdminRoute>
+                }
+              />
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </PricingSettingsProvider>
         </CurrencyProvider>
       </AuthProvider>
     </Router>

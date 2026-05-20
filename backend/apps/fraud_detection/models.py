@@ -440,9 +440,12 @@ class Policy(models.Model):
         return 0
     
     def calculate_premium(self):
-        """Auto-calculate premium based on multiple factors"""
-        # Base premium based on vehicle value
-        base_premium = float(self.vehicle.market_value) * 0.05  # 5% of vehicle value
+        """Auto-calculate premium based on multiple factors & Global Settings"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
+        # Base premium based on vehicle value and global percentage (e.g., 5%)
+        base_premium = float(self.vehicle.market_value) * float(settings.base_premium_percentage)
         
         # Coverage level multiplier
         coverage_multipliers = {
@@ -461,40 +464,40 @@ class Policy(models.Model):
         }
         base_premium *= policy_multipliers.get(self.policy_type, 1.0)
         
-        # Vehicle age factor (older vehicles = lower premium)
+        # Vehicle age factor
         vehicle_age = self.vehicle.vehicle_age
         if vehicle_age > 10:
             base_premium *= 0.7
         elif vehicle_age > 5:
             base_premium *= 0.85
         
-        # Driver risk factors
+        # Driver risk factors (Dynamic Surcharges)
         driver_age = self.policyholder.age
         if driver_age < 25:
-            base_premium *= 1.4  # Young driver surcharge
+            base_premium *= (1.0 + float(settings.surcharge_young_driver))
         elif driver_age > 65:
-            base_premium *= 1.2  # Senior driver surcharge
+            base_premium *= (1.0 + float(settings.surcharge_senior_driver))
         
-        # Credit score discount
+        # Credit score adjustments (Dynamic Discounts/Surcharges)
         credit_score = self.policyholder.credit_score or 650
         if credit_score >= 750:
-            base_premium *= 0.85  # Excellent credit discount
+            base_premium *= (1.0 - float(settings.discount_excellent_credit))
         elif credit_score >= 700:
-            base_premium *= 0.92  # Good credit discount
+            base_premium *= 0.92  # Secondary tier discount
         elif credit_score < 600:
-            base_premium *= 1.15  # Poor credit surcharge
+            base_premium *= (1.0 + float(settings.surcharge_poor_credit))
         
-        # License discounts
+        # License & Medical factors
         if self.policyholder.has_defensive_license:
-            base_premium *= 0.9  # Defensive driving discount
+            base_premium *= 0.9 
         if not self.policyholder.has_driving_license:
-            base_premium *= 1.5  # No license penalty
+            base_premium *= 1.5 
         if not self.policyholder.is_medical_license_valid:
-            base_premium *= 1.2  # Medical concerns surcharge
+            base_premium *= 1.2 
         
-        # Safety features discount
+        # Safety features (Dynamic Anti-Theft)
         if self.vehicle.has_anti_theft:
-            base_premium *= 0.95
+            base_premium *= (1.0 - float(settings.discount_anti_theft))
         if self.vehicle.has_airbags:
             base_premium *= 0.93
         if self.vehicle.has_abs:
@@ -504,15 +507,18 @@ class Policy(models.Model):
         if self.vehicle.is_modified:
             base_premium *= 1.25
         
-        # Additional coverage add-ons
+        # Dynamic Additional coverage add-ons
         if self.has_roadside_assistance:
-            base_premium += 50
+            base_premium += float(settings.addon_roadside_assistance)
         if self.has_rental_coverage:
-            base_premium += 75
+            base_premium += float(settings.addon_rental_coverage)
         if self.has_glass_coverage:
-            base_premium += 40
+            base_premium += float(settings.addon_glass_coverage)
         
-        return Decimal(str(round(base_premium, 2)))
+        # Enforce Global Minimum Premium Floor
+        final_premium = max(base_premium, float(settings.minimum_premium))
+        
+        return Decimal(str(round(final_premium, 2)))
     
     def calculate_coverage(self):
         """Auto-calculate coverage amount"""
@@ -718,23 +724,30 @@ class Claim(models.Model):
         return None
     
     def calculate_claimed_amount(self):
-        """Auto-calculate claim amount based on severity and vehicle value"""
+        """
+        Auto-calculate claim amount based on severity and vehicle value.
+        Uses admin-configurable severity multipliers from GlobalPricingSettings
+        instead of hardcoded percentages.
+        """
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+ 
         vehicle_value = float(self.vehicle.market_value)
-        
-        severity_percentages = {
-            'MINOR': 0.10,      # 10% of vehicle value
-            'MODERATE': 0.30,   # 30% of vehicle value
-            'MAJOR': 0.60,      # 60% of vehicle value
-            'TOTAL_LOSS': 1.0   # 100% of vehicle value
+ 
+        severity_multipliers = {
+            'MINOR':      float(settings.sev_minor_mult),
+            'MODERATE':   float(settings.sev_moderate_mult),   # new field — see note above
+            'MAJOR':      float(settings.sev_major_mult),
+            'TOTAL_LOSS': float(settings.sev_total_mult),
         }
-        
-        damage_pct = severity_percentages.get(self.severity, 0.30)
+ 
+        damage_pct = severity_multipliers.get(self.severity, float(settings.sev_minor_mult))
         claim_amount = vehicle_value * damage_pct
-        
+ 
         # Cannot exceed policy coverage
         max_coverage = float(self.policy.coverage_amount)
         claim_amount = min(claim_amount, max_coverage)
-        
+ 
         return Decimal(str(round(claim_amount, 2)))
     
     def auto_populate_from_policy(self):
@@ -744,13 +757,29 @@ class Claim(models.Model):
             self.vehicle = self.policy.vehicle
     
     def auto_update_claim_status(self):
-        """Auto-determine claim status from policy status"""
+        """Auto-determine claim status using Global Workflow Thresholds"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
         if not self.policy.is_active:
             self.claim_status = 'REJECTED'
-        elif self.fraud_score >= 0.8:
+            
+        # 1. Fraud ML Rejection Threshold
+        elif self.fraud_score >= settings.threshold_fraud_reject:
             self.claim_status = 'REJECTED'
-        elif self.fraud_score >= 0.6:
+            self.fraud_reason = 'Auto-rejected: Exceeded global fraud threshold'
+            
+        # 2. Manual Review Trigger (High Variance/Risk or High Dollar Amount)
+        elif self.fraud_score >= settings.threshold_variance_warning:
             self.claim_status = 'UNDER_REVIEW'
+        elif self.claimed_amount and self.claimed_amount >= float(settings.threshold_manual_review):
+            self.claim_status = 'UNDER_REVIEW'
+            
+        # 3. Auto-Approve Trigger (Low Risk AND Low Dollar Amount)
+        elif self.claimed_amount and self.claimed_amount <= float(settings.threshold_auto_approve):
+            self.claim_status = 'APPROVED'
+            self.approved_amount = self.claimed_amount
+            self.reviewed_date = self.submitted_date # Auto-reviewed immediately
         # Otherwise keep current status
     
     def save(self, *args, **kwargs):

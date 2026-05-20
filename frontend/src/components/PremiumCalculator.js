@@ -3,9 +3,11 @@ import Sidebar from './Sidebar';
 import { Calculator, DollarSign, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useCurrencyFormatter } from '../utils/currencyFormatter';
+import { usePricingSettings } from '../contexts/PricingSettingsContext'; // <-- Added Import
 
 export default function PremiumCalculator() {
   const { fmtMoney } = useCurrencyFormatter();
+  const { settings, loading: settingsLoading } = usePricingSettings(); // <-- Fetch dynamic settings
   const [currency, setCurrency] = useState('USD');
 
   const [formData, setFormData] = useState({
@@ -15,12 +17,12 @@ export default function PremiumCalculator() {
     coverage_amount: '50000',
     deductible: '500',
     
-    // Customer info (minimal - only age, credit, experience)
+    // Customer info
     customer_age: '',
     customer_credit_score: '',
     customer_years_experience: '0',
     
-    // Vehicle info - FIXED: vehicle_year → vehicle_manufacture_year
+    // Vehicle info
     vehicle_manufacture_year: '',
     vehicle_make: '',
     vehicle_model: '',
@@ -40,17 +42,10 @@ export default function PremiumCalculator() {
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
-    if (type === 'checkbox') {
-      setFormData({
-        ...formData,
-        [name]: e.target.checked,
-      });
-    } else {
-      setFormData({
-        ...formData,
-        [name]: value,
-      });
-    }
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? e.target.checked : value,
+    }));
   };
 
   const calculatePremium = async (e) => {
@@ -59,7 +54,6 @@ export default function PremiumCalculator() {
     setLoading(true);
 
     try {
-      // Convert form data to API format - FIXED: use vehicle_manufacture_year
       const apiData = {
         policy_type: formData.policy_type,
         coverage_level: formData.coverage_level,
@@ -88,9 +82,11 @@ export default function PremiumCalculator() {
     }
   };
 
-  const getRiskLevel = (premium) => {
-    if (premium >= 2000) return { level: 'High Premium', color: '#EF4444', bg: '#FEE2E2' };
-    if (premium >= 1000) return { level: 'Medium Premium', color: '#F59E0B', bg: '#FEF3C7' };
+  const getRiskLevel = (premium, settings) => {
+    const high = settings?.threshold_manual_review;
+    const mid  = settings?.threshold_auto_approve;
+    if (premium >= high) return { level: 'High Premium', color: '#EF4444', bg: '#FEE2E2' };
+    if (premium >= mid)  return { level: 'Medium Premium', color: '#F59E0B', bg: '#FEF3C7' };
     return { level: 'Low Premium', color: '#10B981', bg: '#D1FAE5' };
   };
 
@@ -369,7 +365,12 @@ export default function PremiumCalculator() {
                             onChange={handleChange}
                             className="mr-2 w-4 h-4"
                           />
-                          <span className="text-sm" style={{ color: '#2C3E50' }}>Anti-theft System (5% discount)</span>
+                          <span className="text-sm" style={{ color: '#2C3E50' }}>
+                            Anti-theft System 
+                            <span className="text-gray-500 ml-1">
+                              (Discount applies automatically)
+                            </span>
+                          </span>
                         </label>
                         <label className="flex items-center">
                           <input
@@ -385,49 +386,63 @@ export default function PremiumCalculator() {
                     </div>
                   </div>
 
-                  {/* Optional Coverages */}
+                  {/* Optional Coverages - Now Using Dynamic Database Values */}
                   <div className="mb-6">
                     <h4 className="font-semibold mb-4" style={{ color: '#2C3E50' }}>
                       Optional Coverages
                     </h4>
-                    <div className="space-y-2">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name="has_roadside_assistance"
-                          checked={formData.has_roadside_assistance}
-                          onChange={handleChange}
-                          className="mr-2 w-4 h-4"
-                        />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Roadside Assistance (+{fmtMoney(50, currency)}/year)</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name="has_rental_coverage"
-                          checked={formData.has_rental_coverage}
-                          onChange={handleChange}
-                          className="mr-2 w-4 h-4"
-                        />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Rental Coverage (+{fmtMoney(75, currency)}/year)</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name="has_glass_coverage"
-                          checked={formData.has_glass_coverage}
-                          onChange={handleChange}
-                          className="mr-2 w-4 h-4"
-                        />
-                        <span className="text-sm" style={{ color: '#2C3E50' }}>Glass Coverage (+{fmtMoney(30, currency)}/year)</span>
-                      </label>
-                    </div>
+                    
+                    {settingsLoading ? (
+                      <div className="flex items-center gap-2 py-2">
+                        <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#9CA3AF' }} />
+                        <span className="text-sm text-gray-500">Loading coverage prices...</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name="has_roadside_assistance"
+                            checked={formData.has_roadside_assistance}
+                            onChange={handleChange}
+                            className="mr-2 w-4 h-4"
+                          />
+                          <span className="text-sm" style={{ color: '#2C3E50' }}>
+                            Roadside Assistance (+{fmtMoney(settings?.addon_roadside_assistance ?? 50, currency)}/year)
+                          </span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name="has_rental_coverage"
+                            checked={formData.has_rental_coverage}
+                            onChange={handleChange}
+                            className="mr-2 w-4 h-4"
+                          />
+                          <span className="text-sm" style={{ color: '#2C3E50' }}>
+                            Rental Coverage (+{fmtMoney(settings?.addon_rental_coverage ?? 75, currency)}/year)
+                          </span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name="has_glass_coverage"
+                            checked={formData.has_glass_coverage}
+                            onChange={handleChange}
+                            className="mr-2 w-4 h-4"
+                          />
+                          <span className="text-sm" style={{ color: '#2C3E50' }}>
+                            Glass Coverage (+{fmtMoney(settings?.addon_glass_coverage ?? 30, currency)}/year)
+                          </span>
+                        </label>
+                      </div>
+                    )}
                   </div>
 
                   {/* Submit Button */}
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || settingsLoading}
                     className="w-full py-3 px-4 rounded-lg text-white font-medium transition-colors disabled:opacity-50 inline-flex items-center justify-center"
                     style={{ backgroundColor: '#FF6B4A' }}
                     onMouseEnter={(e) => {
@@ -485,11 +500,11 @@ export default function PremiumCalculator() {
                       <div
                         className="inline-block px-4 py-2 rounded-full text-sm font-medium"
                         style={{
-                          backgroundColor: getRiskLevel(result.final_premium).bg,
-                          color: getRiskLevel(result.final_premium).color,
+                          backgroundColor: getRiskLevel(result.final_premium, settings).bg,
+                          color: getRiskLevel(result.final_premium, settings).color,
                         }}
                       >
-                        {getRiskLevel(result.final_premium).level}
+                        {getRiskLevel(result.final_premium, settings).level}
                       </div>
                     </div>
 
@@ -520,6 +535,18 @@ export default function PremiumCalculator() {
                               -{fmtMoney(result.discount_amount, currency)}
                             </span>
                           </div>
+                        )}
+                        
+                        {/* Render Optional Coverages Sub-breakdown if present */}
+                        {result.optional_coverages && Object.keys(result.optional_coverages).length > 0 && (
+                           <div className="mt-2 pt-2 border-t border-gray-200">
+                             {Object.entries(result.optional_coverages).map(([key, value]) => (
+                                <div key={key} className="flex justify-between py-1 px-3">
+                                  <span className="text-xs text-gray-500 capitalize">{key.replace('_', ' ')}</span>
+                                  <span className="text-xs font-medium text-gray-700">+{fmtMoney(value, currency)}</span>
+                                </div>
+                             ))}
+                           </div>
                         )}
                       </div>
                     </div>
@@ -561,7 +588,7 @@ export default function PremiumCalculator() {
                         <div className="space-y-2">
                           {Object.entries(result.risk_factors).map(([key, value]) => (
                             <div key={key} className="flex items-start p-3 rounded-lg" style={{ backgroundColor: '#F8F9FA' }}>
-                              <div className="w-2 h-2 rounded-full mt-2 mr-3" style={{ backgroundColor: '#FF6B4A' }} />
+                              <div className="w-2 h-2 rounded-full mt-2 mr-3 flex-shrink-0" style={{ backgroundColor: '#FF6B4A' }} />
                               <div>
                                 <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>
                                   {value.reason || value}

@@ -142,9 +142,12 @@ class VehicleViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def high_value(self, request):
-        """Get high-value vehicles (market value > $50,000)"""
-        high_value_vehicles = Vehicle.objects.filter(market_value__gt=50000)
-        serializer = self.get_serializer(high_value_vehicles, many=True)
+        """Get high-value claims based on global manual review threshold"""
+        from system_settings.models import GlobalPricingSettings
+        threshold = GlobalPricingSettings.get_solo().threshold_manual_review
+        
+        high_value_claims = Claim.objects.filter(claimed_amount__gt=threshold)
+        serializer = self.get_serializer(high_value_claims, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -295,17 +298,23 @@ class ClaimViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def fraudulent(self, request):
-        """Get all claims flagged as fraudulent"""
+        """Get all claims flagged as fraudulent or above the fraud-reject threshold."""
+        from system_settings.models import GlobalPricingSettings
+        threshold = GlobalPricingSettings.get_solo().threshold_fraud_reject
+ 
         fraudulent_claims = Claim.objects.filter(
-            Q(is_fraudulent=True) | Q(fraud_score__gte=0.7)
+            Q(is_fraudulent=True) | Q(fraud_score__gte=threshold)
         )
         serializer = self.get_serializer(fraudulent_claims, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def high_value(self, request):
-        """Get high-value claims (>$10,000)"""
-        high_value_claims = Claim.objects.filter(claimed_amount__gt=10000)
+        """Get claims above the global manual-review dollar threshold."""
+        from system_settings.models import GlobalPricingSettings
+        threshold = GlobalPricingSettings.get_solo().threshold_manual_review
+ 
+        high_value_claims = Claim.objects.filter(claimed_amount__gt=threshold)
         serializer = self.get_serializer(high_value_claims, many=True)
         return Response(serializer.data)
     
@@ -432,79 +441,74 @@ class ClaimViewSet(viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def fraud_statistics_chart(request):
     """
-    Get fraud detection statistics for dashboard charts
-    
-    GET /api/fraud-detection/stats/?period=30days
-    
-    Query Parameters:
-    - period: Time period (7days, 30days, 90days, 1year)
-    
-    Response:
-    {
-        "low_risk": 158,
-        "medium_risk": 28,
-        "high_risk": 12,
-        "fraud_rate": 6.1,
-        "low_risk_percentage": 79.8,
-        "medium_risk_percentage": 14.1,
-        "high_risk_percentage": 6.1
-    }
+    Get fraud detection statistics for dashboard charts.
+ 
+    Risk buckets are driven by GlobalPricingSettings:
+      low    — fraud_score < threshold_variance_warning
+      medium — threshold_variance_warning <= fraud_score < threshold_fraud_reject
+      high   — fraud_score >= threshold_fraud_reject
     """
-    
+    from system_settings.models import GlobalPricingSettings
+ 
     period = request.query_params.get('period', '30days')
     today = timezone.now().date()
-    
-    # Calculate date range
+ 
     if period == '7days':
         start_date = today - timedelta(days=7)
     elif period == '30days':
         start_date = today - timedelta(days=30)
     elif period == '90days':
         start_date = today - timedelta(days=90)
-    else:  # '1year'
+    else:
         start_date = today - timedelta(days=365)
-    
-    # Filter claims in period
+ 
+    settings = GlobalPricingSettings.get_solo()
+    warn_thresh = float(settings.threshold_variance_warning)
+    reject_thresh = float(settings.threshold_fraud_reject)
+ 
     claims = Claim.objects.filter(submitted_date__date__gte=start_date)
-    
-    # Categorize by fraud score
-    # Low risk: fraud_score < 0.3
-    # Medium risk: 0.3 <= fraud_score < 0.7
-    # High risk: fraud_score >= 0.7
-    low_risk = claims.filter(fraud_score__lt=0.3).count()
-    medium_risk = claims.filter(fraud_score__gte=0.3, fraud_score__lt=0.7).count()
-    high_risk = claims.filter(fraud_score__gte=0.7).count()
-    
+ 
+    low_risk    = claims.filter(fraud_score__lt=warn_thresh).count()
+    medium_risk = claims.filter(
+        fraud_score__gte=warn_thresh, fraud_score__lt=reject_thresh
+    ).count()
+    high_risk   = claims.filter(fraud_score__gte=reject_thresh).count()
+ 
     total = low_risk + medium_risk + high_risk
-    
+ 
     if total == 0:
         return Response({
-            'low_risk': 0,
-            'medium_risk': 0,
-            'high_risk': 0,
+            'low_risk': 0, 'medium_risk': 0, 'high_risk': 0,
             'fraud_rate': 0,
             'low_risk_percentage': 0,
             'medium_risk_percentage': 0,
             'high_risk_percentage': 0,
             'period': period,
-            'total_claims': 0
+            'total_claims': 0,
+            'thresholds': {
+                'low_medium_boundary': warn_thresh,
+                'medium_high_boundary': reject_thresh,
+            }
         })
-    
-    # Calculate fraud rate (high risk claims percentage)
-    fraud_rate = (high_risk / total * 100) if total > 0 else 0
-    
+ 
+    fraud_rate = high_risk / total * 100
+ 
     return Response({
         'low_risk': low_risk,
         'medium_risk': medium_risk,
         'high_risk': high_risk,
         'fraud_rate': round(fraud_rate, 1),
-        'low_risk_percentage': round((low_risk / total * 100), 1),
-        'medium_risk_percentage': round((medium_risk / total * 100), 1),
-        'high_risk_percentage': round((high_risk / total * 100), 1),
+        'low_risk_percentage':    round(low_risk    / total * 100, 1),
+        'medium_risk_percentage': round(medium_risk / total * 100, 1),
+        'high_risk_percentage':   round(high_risk   / total * 100, 1),
         'period': period,
-        'total_claims': total
+        'total_claims': total,
+        # Send thresholds to the frontend so charts can label axes correctly
+        'thresholds': {
+            'low_medium_boundary': warn_thresh,
+            'medium_high_boundary': reject_thresh,
+        }
     })
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import Sidebar from './Sidebar';
+import { usePricingSettings } from '../contexts/PricingSettingsContext';
 import {
   Search, Plus, Edit, Trash2, ChevronLeft, ChevronRight, Filter,
   ChevronRight as ArrowRight,
@@ -41,6 +42,7 @@ export default function ClaimsList() {
   const [showModal,     setShowModal]     = useState(false);
   const [editingClaim,  setEditingClaim]  = useState(null);
   const [currentPage,   setCurrentPage]   = useState(1);
+  const { settings: pricingSettings } = usePricingSettings();
 
   useEffect(() => { fetchClaims(); }, []);
 
@@ -106,9 +108,11 @@ export default function ClaimsList() {
 
   const fraudColor = (score) => {
     if (score == null) return { bg: '#F3F4F6', text: '#6B7280' };
-    if (score > 0.7)   return { bg: '#FEE2E2', text: '#991B1B' };
-    if (score > 0.4)   return { bg: '#FEF3C7', text: '#92400E' };
-    return               { bg: '#D1FAE5', text: '#065F46' };
+    const reject  = pricingSettings?.threshold_fraud_reject    ?? 0.7;
+    const warning = pricingSettings?.threshold_variance_warning ?? 0.4;
+    if (score >= reject)  return { bg: '#FEE2E2', text: '#991B1B' };
+    if (score >= warning) return { bg: '#FEF3C7', text: '#92400E' };
+    return                       { bg: '#D1FAE5', text: '#065F46' };
   };
 
   return (

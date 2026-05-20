@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.fraud_detection.models import Claim, Policy, Policyholder, Vehicle
+from system_settings.models import GlobalPricingSettings  # <-- ADDED: Import Global Settings
 
 from .models import CompanyProfile, RolePermission, UserProfile
 from .permissions import IsAdmin, IsSuperAdmin
@@ -521,10 +522,14 @@ def dashboard_statistics(request: Request) -> Response:
         }
 
     if profile and profile.role in ('SUPER_ADMIN', 'ADMIN', 'CLAIMS_ADJUSTER', 'FRAUD_INVESTIGATOR'):
+        # --> INTEGRATED: Fetch Global Pricing Settings
+        settings = GlobalPricingSettings.get_solo()
         average_fraud_score = Claim.objects.aggregate(avg=Avg('fraud_score'))['avg'] or 0
+        
         statistics['fraud'] = {
             'fraudulent_claims': Claim.objects.filter(is_fraudulent=True).count(),
-            'high_risk_claims': Claim.objects.filter(fraud_score__gte=0.7).count(),
+            # --> INTEGRATED: Use dynamic variance warning threshold instead of hardcoded 0.7
+            'high_risk_claims': Claim.objects.filter(fraud_score__gte=settings.threshold_variance_warning).count(),
             'average_fraud_score': float(average_fraud_score),
         }
 
