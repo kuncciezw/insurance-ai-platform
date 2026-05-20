@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
-import { Calculator, DollarSign, TrendingUp, Shield, AlertCircle, Loader2 } from 'lucide-react';
+import { Calculator, DollarSign, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useCurrencyFormatter } from '../utils/currencyFormatter';
 
@@ -20,8 +20,8 @@ export default function PremiumCalculator() {
     customer_credit_score: '',
     customer_years_experience: '0',
     
-    // Vehicle info
-    vehicle_year: '',
+    // Vehicle info - FIXED: vehicle_year → vehicle_manufacture_year
+    vehicle_manufacture_year: '',
     vehicle_make: '',
     vehicle_model: '',
     vehicle_value: '',
@@ -59,7 +59,7 @@ export default function PremiumCalculator() {
     setLoading(true);
 
     try {
-      // Convert form data to API format
+      // Convert form data to API format - FIXED: use vehicle_manufacture_year
       const apiData = {
         policy_type: formData.policy_type,
         coverage_level: formData.coverage_level,
@@ -68,7 +68,7 @@ export default function PremiumCalculator() {
         customer_age: parseInt(formData.customer_age),
         customer_credit_score: parseInt(formData.customer_credit_score),
         customer_years_experience: parseInt(formData.customer_years_experience),
-        vehicle_year: parseInt(formData.vehicle_year),
+        vehicle_manufacture_year: parseInt(formData.vehicle_manufacture_year),
         vehicle_make: formData.vehicle_make,
         vehicle_model: formData.vehicle_model,
         vehicle_value: parseFloat(formData.vehicle_value),
@@ -326,8 +326,8 @@ export default function PremiumCalculator() {
                         </label>
                         <input
                           type="number"
-                          name="vehicle_year"
-                          value={formData.vehicle_year}
+                          name="vehicle_manufacture_year"
+                          value={formData.vehicle_manufacture_year}
                           onChange={handleChange}
                           className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2"
                           style={{ borderColor: '#E0E0E0' }}
@@ -553,7 +553,7 @@ export default function PremiumCalculator() {
 
                     {/* Risk Factors */}
                     {result.risk_factors && Object.keys(result.risk_factors).length > 0 && (
-                      <div className="mb-6">
+                      <div>
                         <h4 className="font-semibold mb-3 flex items-center" style={{ color: '#2C3E50' }}>
                           <AlertCircle className="w-5 h-5 mr-2" style={{ color: '#FF6B4A' }} />
                           Risk Factors
@@ -577,53 +577,6 @@ export default function PremiumCalculator() {
                         </div>
                       </div>
                     )}
-
-                    {/* Discounts */}
-                    {result.discounts && Object.keys(result.discounts).length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold mb-3 flex items-center" style={{ color: '#2C3E50' }}>
-                          <Shield className="w-5 h-5 mr-2" style={{ color: '#10B981' }} />
-                          Applied Discounts
-                        </h4>
-                        <div className="space-y-2">
-                          {Object.entries(result.discounts).map(([key, value]) => (
-                            <div key={key} className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: '#D1FAE5' }}>
-                              <span className="text-sm" style={{ color: '#2C3E50' }}>{value.reason}</span>
-                              <span className="font-medium" style={{ color: '#10B981' }}>
-                                -{fmtMoney(value.amount, currency)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ML Confidence */}
-                    <div className="p-4 rounded-lg" style={{ backgroundColor: '#D1FAE5' }}>
-                      <p className="text-sm font-medium mb-2" style={{ color: '#065F46' }}>
-                        AI-Powered Pricing
-                      </p>
-                      <p className="text-sm mb-3" style={{ color: '#047857' }}>
-                        This premium is calculated using XGBoost ML model based on vehicle details, driver profile, and historical data.
-                      </p>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium" style={{ color: '#065F46' }}>
-                          Model Confidence
-                        </span>
-                        <span className="text-lg font-bold" style={{ color: '#10B981' }}>
-                          {(result.confidence_score * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                        <div
-                          className="h-2 rounded-full"
-                          style={{
-                            width: `${result.confidence_score * 100}%`,
-                            backgroundColor: '#10B981',
-                          }}
-                        />
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>
