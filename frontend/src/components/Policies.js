@@ -832,36 +832,6 @@ export default function Policies() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Add-ons */}
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7F8C8D' }}>Optional Add-ons</p>
-                    {!pricingSettings ? (
-                      <div className="text-center py-4">
-                        <Loader2 className="inline-block w-5 h-5 animate-spin" style={{ color: '#9CA3AF' }} />
-                        <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>Loading pricing settings...</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-3">
-                        {ADD_ONS.map(({ key, label, price }) => {
-                          const active = formData[key];
-                          return (
-                            <label key={key}
-                              className="flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200"
-                              style={{ borderColor: active ? '#FF6B4A' : '#E5E7EB', backgroundColor: active ? '#FFF5F3' : 'white' }}>
-                              <input type="checkbox" checked={active}
-                                onChange={(e) => setFormData((p) => ({ ...p, [key]: e.target.checked }))}
-                                className="mt-0.5 w-4 h-4 rounded flex-shrink-0" style={{ accentColor: '#FF6B4A' }} />
-                              <div>
-                                <div className="text-sm font-semibold leading-tight" style={{ color: '#2C3E50' }}>{label}</div>
-                                <div className="text-xs mt-0.5 font-medium" style={{ color: active ? '#FF6B4A' : '#9CA3AF' }}>{price}</div>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -975,15 +945,41 @@ export default function Policies() {
                     )}
 
                     {/* Active add-ons summary */}
-                    {[formData.has_roadside_assistance, formData.has_rental_coverage, formData.has_glass_coverage].some(Boolean) && (
-                      <div className="px-6 pb-5">
-                        <div className="flex flex-wrap gap-2">
-                          {formData.has_roadside_assistance && <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ backgroundColor: '#FFF5F3', color: '#FF6B4A', border: '1px solid #FFD5C8' }}>+ Roadside Assistance</span>}
-                          {formData.has_rental_coverage     && <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ backgroundColor: '#FFF5F3', color: '#FF6B4A', border: '1px solid #FFD5C8' }}>+ Rental Coverage</span>}
-                          {formData.has_glass_coverage      && <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ backgroundColor: '#FFF5F3', color: '#FF6B4A', border: '1px solid #FFD5C8' }}>+ Glass Coverage</span>}
+                    <div className="px-6 pb-5 border-t pt-4" style={{ borderColor: '#D1FAE5' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6EE7B7' }}>
+                        Optional Add-ons
+                      </p>
+                      {!pricingSettings ? (
+                        <div className="flex items-center gap-2 text-xs" style={{ color: '#9CA3AF' }}>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading prices…
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {ADD_ONS.map(({ key, label, price }) => {
+                            const active = formData[key];
+                            return (
+                              <label key={key}
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all duration-200 select-none"
+                                style={{ borderColor: active ? '#10B981' : '#D1FAE5', backgroundColor: active ? '#D1FAE5' : 'white' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={active}
+                                  onChange={(e) => setFormData((p) => ({ ...p, [key]: e.target.checked }))}
+                                  className="w-3.5 h-3.5 rounded flex-shrink-0"
+                                  style={{ accentColor: '#10B981' }}
+                                />
+                                <span className="text-xs font-semibold" style={{ color: active ? '#065F46' : '#6B7280' }}>
+                                  {label}
+                                </span>
+                                <span className="text-xs" style={{ color: active ? '#10B981' : '#9CA3AF' }}>
+                                  {price}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
