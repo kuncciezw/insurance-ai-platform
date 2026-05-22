@@ -107,4 +107,39 @@ class GlobalPricingSettingsAdmin(SingletonModelAdmin):
                 'allow_multi_currency',
             ),
         }),
+        
+        ('Age-based Risk Thresholds', {
+            'fields': (
+                'age_threshold_young_driver',
+                'age_threshold_senior_driver',
+            ),
+        }),
+        
+        ('Credit Score Thresholds', {
+            'fields': (
+                'credit_threshold_poor',
+                'credit_threshold_excellent',
+            ),
+        }),
+        
+        ('Vehicle Risk Factors', {
+            'fields': (
+                'vehicle_age_threshold_old',
+                'surcharge_old_vehicle',
+                'surcharge_modified_vehicle',
+            ),
+        }),
+        
+        ('Loyalty Program', {
+            'fields': (
+                'loyalty_years_threshold',
+                'discount_loyalty',
+            ),
+        }),
+        
+        ('Coverage Limits', {
+            'fields': (
+                'minimum_coverage_amount',
+            ),
+        }),
     )

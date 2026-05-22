@@ -124,8 +124,8 @@ def _run_pipeline(claim: Claim) -> None:
         logger.warning("SHAP explanation skipped for %s: %s", claim.claim_number, exc)
 
     # ── Step 5: evidence document analysis ───────────────────────────────
-    if instance.incident_evidence:
-        doc_text = extract_document_text(instance.incident_evidence)
+    if claim.incident_evidence:
+        doc_text = extract_document_text(claim.incident_evidence)
         if doc_text:
             doc_legitimacy, doc_flags = analyze_document_legitimacy(doc_text, claim)
         else:

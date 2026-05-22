@@ -229,71 +229,73 @@ def prepare_pricing_features(data, policyholder=None, vehicle=None):
     return pd.DataFrame([features])
 
 
-def _apply_global_pricing_rules(ml_premium: Decimal, customer_age: int, customer_credit_score: int, 
-                                years_with_company: int, vehicle_age: int, vehicle_has_anti_theft: bool, 
-                                vehicle_is_modified: bool, has_roadside: bool, has_rental: bool, has_glass: bool):
+def _apply_global_pricing_rules(ml_premium: Decimal, customer_age: int, 
+                                customer_credit_score: int, years_with_company: int, 
+                                vehicle_age: int, vehicle_has_anti_theft: bool, 
+                                vehicle_is_modified: bool, has_roadside: bool, 
+                                has_rental: bool, has_glass: bool):
     """
     Private helper to calculate dynamic risk adjustments, discounts, and optional coverages
     using the singleton GlobalPricingSettings.
     """
     settings = GlobalPricingSettings.get_solo()
-    
     risk_factors = {}
     risk_adjustment = Decimal('0.00')
 
     # Age factors (Dynamic)
-    if customer_age < 25:
+    if customer_age < settings.age_threshold_young_driver:
         surcharge = ml_premium * Decimal(str(settings.surcharge_young_driver))
         risk_adjustment += surcharge
         risk_factors['young_driver'] = {
             'impact': f"+{float(settings.surcharge_young_driver) * 100:.0f}%",
-            'reason': 'Driver under 25 years old'
+            'reason': f'Driver under {settings.age_threshold_young_driver} years old'
         }
-    elif customer_age > 65:
+    elif customer_age > settings.age_threshold_senior_driver:
         surcharge = ml_premium * Decimal(str(settings.surcharge_senior_driver))
         risk_adjustment += surcharge
         risk_factors['senior_driver'] = {
             'impact': f"+{float(settings.surcharge_senior_driver) * 100:.0f}%",
-            'reason': 'Driver over 65 years old'
+            'reason': f'Driver over {settings.age_threshold_senior_driver} years old'
         }
 
     # Credit score factor (Dynamic)
-    if customer_credit_score < 600:
+    if customer_credit_score < settings.credit_threshold_poor:
         surcharge = ml_premium * Decimal(str(settings.surcharge_poor_credit))
         risk_adjustment += surcharge
         risk_factors['low_credit'] = {
             'impact': f"+{float(settings.surcharge_poor_credit) * 100:.0f}%",
-            'reason': 'Credit score below 600'
-        }
+            'reason': f'Credit score below {settings.credit_threshold_poor}'
+    }
+
 
     # Vehicle age factor (Heuristic standard)
-    if vehicle_age > 10:
-        risk_adjustment += ml_premium * Decimal('0.10')
+    if vehicle_age > settings.vehicle_age_threshold_old:
+        risk_adjustment += ml_premium * Decimal(str(settings.surcharge_old_vehicle))
         risk_factors['old_vehicle'] = {
-            'impact': '+10%',
+            'impact': f'+{float(settings.surcharge_old_vehicle) * 100:.0f}%',
             'reason': f'Vehicle is {vehicle_age} years old'
-        }
+    }
 
     # Modified vehicle (Heuristic standard)
     if vehicle_is_modified:
-        risk_adjustment += ml_premium * Decimal('0.15')
+        risk_adjustment += ml_premium * Decimal(str(settings.surcharge_modified_vehicle))
         risk_factors['modified_vehicle'] = {
-            'impact': '+15%',
+            'impact': f'+{float(settings.surcharge_modified_vehicle) * 100:.0f}%',
             'reason': 'Vehicle has modifications'
-        }
+    }
 
     # Calculate discounts
     discount_amount = Decimal('0.00')
     discounts = {}
 
     # Good credit discount (Dynamic)
-    if customer_credit_score >= 750:
+    if customer_credit_score >= settings.credit_threshold_excellent:
         discount = ml_premium * Decimal(str(settings.discount_excellent_credit))
         discount_amount += discount
         discounts['good_credit'] = {
             'amount': float(discount),
-            'reason': 'Credit score 750+'
-        }
+            'reason': f'Credit score {settings.credit_threshold_excellent}+'
+    }
 
     # Anti-theft discount (Dynamic)
     if vehicle_has_anti_theft:
@@ -302,16 +304,17 @@ def _apply_global_pricing_rules(ml_premium: Decimal, customer_age: int, customer
         discounts['anti_theft'] = {
             'amount': float(discount),
             'reason': 'Anti-theft device installed'
-        }
+    }
+
 
     # Loyalty discount (Heuristic standard)
-    if years_with_company >= 5:
-        discount = ml_premium * Decimal('0.10')
+    if years_with_company >= settings.loyalty_years_threshold:
+        discount = ml_premium * Decimal(str(settings.discount_loyalty))
         discount_amount += discount
         discounts['loyalty'] = {
             'amount': float(discount),
             'reason': f'{years_with_company} years with company'
-        }
+    }
 
     # Add optional coverages (Dynamic flat fees)
     optional_costs = {}

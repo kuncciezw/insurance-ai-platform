@@ -154,9 +154,8 @@ def get_high_risk_claims(request: Request) -> Response:
     """Return claims whose stored fraud_score exceeds a threshold."""
     try:
         settings = GlobalPricingSettings.get_solo()
-        # Default fallback directly targets system threshold settings
         default_threshold = float(settings.threshold_variance_warning)
-        
+
         threshold = float(request.GET.get("threshold", default_threshold))
         limit = min(int(request.GET.get("limit", 20)), 100)
 
@@ -236,12 +235,19 @@ def _analyze_existing_claim(claim_id: str) -> Response:
         )
 
     try:
+        # ── FIX: import document analyser functions (was missing entirely) ──
+        from .document_analyzer import (
+            extract_document_text,
+            analyze_document_legitimacy,
+            compute_combined_fraud_score,
+        )
+
         policy = claim.policy
         policyholder = policy.policyholder
         vehicle = policy.vehicle
         settings = GlobalPricingSettings.get_solo()
 
-        # Build feature DataFrames
+        # ── Build feature DataFrames ──────────────────────────────────────
         claims_df = pd.DataFrame([{
             "id": 0, "policy_id": 0,
             "policyholder_id": 0, "vehicle_id": 0,
@@ -277,16 +283,16 @@ def _analyze_existing_claim(claim_id: str) -> Response:
             "coverage_amount": float(policy.coverage_amount),
         }])
 
-        # Feature engineering
+        # ── Feature engineering ───────────────────────────────────────────
         engineered_df = feature_engineer.engineer_fraud_detection_features(
             claims_df, policyholders_df, vehicles_df, policies_df
         )
 
-        # ML prediction
+        # ── ML prediction ─────────────────────────────────────────────────
         prediction = model_loader.predict_fraud(engineered_df.iloc[0])
-        fraud_prob = float(prediction["fraud_probability"])
+        ml_fraud_score = float(prediction["fraud_probability"])
 
-        # SHAP explanation
+        # ── SHAP explanation ──────────────────────────────────────────────
         try:
             shap_explanation = model_loader.explain_fraud_prediction(engineered_df)
         except Exception as exc:
@@ -295,28 +301,57 @@ def _analyze_existing_claim(claim_id: str) -> Response:
                 "risk_increasers": [], "risk_decreasers": [], "top_features": [],
             }
 
-        risk_factors = _get_risk_factors(claim, policy, policyholder)
-        recommendation, automated_action, explanation = _get_recommendation(fraud_prob, settings)
+        # ── FIX: document analysis (was entirely absent) ──────────────────
+        # Mirrors the same logic used in signals.py _run_pipeline so both
+        # paths produce the same combined score.
+        if claim.incident_evidence:
+            doc_text = extract_document_text(claim.incident_evidence)
+            if doc_text:
+                doc_legitimacy, doc_flags = analyze_document_legitimacy(doc_text, claim)
+            else:
+                # File exists but could not be read
+                doc_legitimacy = 0.40
+                doc_flags = ["Evidence file present but could not be read."]
+        else:
+            # No evidence uploaded — treat as a risk signal
+            doc_legitimacy = 0.35
+            doc_flags = ["No supporting evidence document uploaded."]
 
-        # Persist updated scores using global thresholds configuration
-        claim.fraud_score = fraud_prob
-        claim.is_fraudulent = fraud_prob >= float(settings.threshold_fraud_reject)
+        # ── FIX: combined score (was using raw ml_fraud_score only) ───────
+        # ML model carries 65% weight; document legitimacy carries 35%.
+        # (1 - doc_legitimacy) converts the legitimacy score into a fraud
+        # direction so both components pull in the same direction.
+        combined_score = compute_combined_fraud_score(ml_fraud_score, doc_legitimacy)
+
+        risk_factors = _get_risk_factors(claim, policy, policyholder)
+        recommendation, automated_action, explanation = _get_recommendation(combined_score, settings)
+
+        # ── FIX: persist combined score, not raw ML score ─────────────────
+        # Previously saved fraud_prob (ML only) which overwrote the correct
+        # combined score that signals.py had already stored on claim creation.
+        claim.fraud_score = combined_score
+        claim.is_fraudulent = combined_score >= float(settings.threshold_fraud_reject)
         claim.save(update_fields=["fraud_score", "is_fraudulent"])
 
         return Response({
             "claim_id": str(claim.id),
             "claim_number": str(claim.claim_number),
             "claimed_amount": float(claim.claimed_amount),
-            "fraud_score": round(fraud_prob, 4),
+            "fraud_score": round(combined_score, 4),
             "is_fraudulent": claim.is_fraudulent,
             "fraud_analysis": {
-                "fraud_probability": round(fraud_prob, 4),
+                # ── FIX: expose combined score as the headline probability ─
+                "fraud_probability": round(combined_score, 4),
                 "is_fraudulent": claim.is_fraudulent,
                 "risk_level": str(prediction["risk_level"]),
                 "confidence": prediction["confidence"],
-                "xgboost_probability": round(float(prediction.get("xgboost_probability", fraud_prob)), 4),
+                "xgboost_probability": round(float(prediction.get("xgboost_probability", ml_fraud_score)), 4),
                 "anomaly_score": round(float(prediction.get("anomaly_score", 0)), 4),
                 "threshold_used": round(float(settings.threshold_fraud_reject), 4),
+                # ── FIX: new fields so frontend can show document breakdown ─
+                "ml_score": round(ml_fraud_score, 4),
+                "document_legitimacy": round(doc_legitimacy, 4),
+                "document_flags": doc_flags,
             },
             "model_explanation": shap_explanation,
             "risk_factors": risk_factors or ["No significant risk factors detected"],
@@ -415,7 +450,8 @@ def _analyze_new_claim_data(data: dict[str, Any]) -> Response:
                 "risk_increasers": [], "risk_decreasers": [], "top_features": [],
             }
 
-        # heuristic risk factors for synthetic data
+        # Synthetic claims have no uploaded evidence — note this clearly
+        # so callers understand the score is ML-only for synthetic data.
         risk_factors = []
         if int(data.get("policy_age_days", 365)) < 30:
             risk_factors.append("Very new policy (< 30 days)")
@@ -445,6 +481,10 @@ def _analyze_new_claim_data(data: dict[str, Any]) -> Response:
                 "confidence": prediction["confidence"],
                 "xgboost_probability": round(float(prediction.get("xgboost_probability", fraud_prob)), 4),
                 "anomaly_score": round(float(prediction.get("anomaly_score", 0)), 4),
+                # Synthetic data — no document to analyse
+                "ml_score": round(fraud_prob, 4),
+                "document_legitimacy": None,
+                "document_flags": ["No evidence document — synthetic claim data"],
             },
             "model_explanation": shap_explanation,
             "risk_factors": risk_factors or ["No significant risk factors detected"],
@@ -498,18 +538,17 @@ def _get_risk_factors(claim: Claim, policy: Policy, policyholder: Policyholder) 
 
 def _get_recommendation(fraud_prob: float, settings: GlobalPricingSettings) -> tuple[str, str, str]:
     """
-    Evaluates ML fraud probability against Singleton configuration thresholds.
+    Evaluates combined fraud probability against Singleton configuration thresholds.
+    Note: fraud_prob here is always the combined score (ML + document), never raw ML only.
     """
     reject_threshold = float(settings.threshold_fraud_reject)
     warning_threshold = float(settings.threshold_variance_warning)
 
-    # Exceeds catastrophic rejection setting limit
     if fraud_prob >= reject_threshold:
         return (
             "REJECT_CLAIM", "REJECT",
             f"Strong fraud indicators. Exceeds global system rejection threshold ({reject_threshold:.2%}).",
         )
-    # Exceeds cautionary workflow warning trigger
     if fraud_prob >= warning_threshold:
         return (
             "DETAILED_INVESTIGATION", "HOLD",

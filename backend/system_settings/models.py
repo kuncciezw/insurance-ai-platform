@@ -146,6 +146,56 @@ class GlobalPricingSettings(SingletonModel):
         default=True,
         help_text="Allow users to select ZWG in addition to USD when creating policies"
     )
+    
+    # ── Age-based Risk Thresholds ─────────────────────────────────────────
+    age_threshold_young_driver = models.IntegerField(
+        default=25,
+        help_text="Age below which young driver surcharge applies"
+    )
+    age_threshold_senior_driver = models.IntegerField(
+        default=65,
+        help_text="Age above which senior driver surcharge applies"
+    )
+
+    # ── Credit Score Thresholds ───────────────────────────────────────────
+    credit_threshold_poor = models.IntegerField(
+        default=600,
+        help_text="Credit score below which poor credit surcharge applies"
+    )
+    credit_threshold_excellent = models.IntegerField(
+        default=750,
+        help_text="Credit score at/above which excellent credit discount applies"
+    )
+
+    # ── Vehicle Risk Thresholds ───────────────────────────────────────────
+    vehicle_age_threshold_old = models.IntegerField(
+        default=10,
+        help_text="Vehicle age (years) above which old vehicle surcharge applies"
+    )
+    surcharge_old_vehicle = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.10'),
+        help_text="Surcharge for vehicles older than threshold (e.g. 0.10 = +10%)"
+    )
+    surcharge_modified_vehicle = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.15'),
+        help_text="Surcharge for modified vehicles (e.g. 0.15 = +15%)"
+    )
+
+    # ── Loyalty Discount ──────────────────────────────────────────────────
+    loyalty_years_threshold = models.IntegerField(
+        default=5,
+        help_text="Years with company required for loyalty discount"
+    )
+    discount_loyalty = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.10'),
+        help_text="Loyalty discount percentage (e.g. 0.10 = -10%)"
+    )
+
+    # ── Coverage Limits ───────────────────────────────────────────────────
+    minimum_coverage_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('1000.00'),
+        help_text="Minimum allowable coverage amount for any policy"
+    )
 
     class Meta:
         verbose_name = "Global Pricing Settings"

@@ -505,6 +505,10 @@ class ApiService {
     return this.request(`/fraud-detection/fraud/history/${queryString ? `?${queryString}` : ''}`);
   }
 
+  async getClaimFraudAnalysis(claimId) {
+    return this.request(`/fraud-detection/claims/${claimId}/fraud_analysis/`);
+  }
+
   // Premium Calculator
   async calculatePremium(data) {
     return this.request('/dynamic-pricing/calculate-premium/', {
@@ -527,6 +531,15 @@ class ApiService {
       body: JSON.stringify(data),
     });
   }
+
+  async explainClaim(data) {
+    return this.request('/ai/explain-claim/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
 }
+
+
 
 export const api = new ApiService();

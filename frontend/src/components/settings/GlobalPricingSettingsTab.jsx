@@ -6,27 +6,54 @@ const HINTS = {
   base_premium_percentage:   'Fraction of vehicle market value charged as the starting premium (e.g. 0.05 = 5%).',
   minimum_premium:           'Absolute floor premium — no policy can be priced below this amount regardless of discounts.',
   labor_rate_per_hour:       'Hourly repair labour cost used when estimating claims that include a repair component.',
+  
   addon_roadside_assistance: 'Flat fee added to a premium when the policyholder opts in to roadside assistance cover.',
   addon_rental_coverage:     'Flat fee added to a premium for rental-car cover while the insured vehicle is being repaired.',
   addon_glass_coverage:      'Flat fee added for glass and windscreen replacement cover.',
-  surcharge_young_driver:    'Extra premium multiplier for drivers under 25 years old (e.g. 0.15 = +15% on base).',
-  surcharge_senior_driver:   'Extra premium multiplier for drivers over 65 years old (e.g. 0.10 = +10% on base).',
-  surcharge_poor_credit:     "Extra premium multiplier when a policyholder's credit score is below 600.",
-  discount_excellent_credit: 'Premium reduction fraction for policyholders with a credit score of 750+ (e.g. 0.10 = −10%).',
+  
+  // ── NEW: Age Thresholds ──
+  age_threshold_young_driver: 'Age below which the young driver surcharge applies (typically 25).',
+  age_threshold_senior_driver: 'Age above which the senior driver surcharge applies (typically 65).',
+  
+  surcharge_young_driver:    'Extra premium multiplier for drivers below the young driver age threshold (e.g. 0.15 = +15%).',
+  surcharge_senior_driver:   'Extra premium multiplier for drivers above the senior driver age threshold (e.g. 0.10 = +10%).',
+  surcharge_poor_credit:     'Extra premium multiplier when credit score is below the poor credit threshold.',
+  
+  // ── NEW: Credit Thresholds ──
+  credit_threshold_poor:      'Credit score below which the poor credit surcharge applies (typically 600).',
+  credit_threshold_excellent: 'Credit score at/above which the excellent credit discount applies (typically 750).',
+  
+  discount_excellent_credit: 'Premium reduction for policyholders above the excellent credit threshold (e.g. 0.10 = −10%).',
   discount_anti_theft:       'Premium reduction fraction when the insured vehicle has an anti-theft device installed.',
+  
+  // ── NEW: Vehicle Risk ──
+  vehicle_age_threshold_old:  'Vehicle age in years above which the old vehicle surcharge applies (typically 10 years).',
+  surcharge_old_vehicle:      'Extra premium multiplier for vehicles older than the threshold (e.g. 0.10 = +10%).',
+  surcharge_modified_vehicle: 'Extra premium multiplier for modified vehicles (e.g. 0.15 = +15%).',
+  
+  // ── NEW: Loyalty ──
+  loyalty_years_threshold:    'Years with company required to qualify for the loyalty discount (typically 5 years).',
+  discount_loyalty:           'Premium reduction for policyholders meeting the loyalty threshold (e.g. 0.10 = −10%).',
+  
+  // ── NEW: Coverage Limits ──
+  minimum_coverage_amount:    'Minimum allowable coverage amount for any policy. Policies cannot be issued below this value.',
+  
   threshold_auto_approve:    'Claims at or below this dollar amount are approved automatically without adjuster review.',
   threshold_manual_review:   'Claims above this amount are escalated to a human adjuster for manual review.',
   threshold_fraud_reject:    'ML fraud score (0–1) at which a claim is automatically rejected. Scores at or above this trigger rejection.',
   threshold_variance_warning:'ML fraud score (0–1) at which a claim is flagged as elevated risk and sent for closer review.',
+  
   sev_trivial_mult:          'Fraction of vehicle value used as the starting claim estimate for trivial damage (e.g. 0.05 = 5% of value).',
   sev_minor_mult:            'Fraction of vehicle value for minor damage claims (e.g. 0.15 = 15%).',
   sev_moderate_mult:         'Fraction of vehicle value for moderate damage claims (e.g. 0.30 = 30%).',
   sev_major_mult:            'Fraction of vehicle value for major damage claims (e.g. 0.35 = 35%).',
   sev_total_mult:            'Fraction of vehicle value for total-loss claims — typically 1.0 (100% of value).',
+  
   ratio_vehicle_damage:      'Portion of an estimated claim total attributed to vehicle repair. All four ratios must sum to 1.0.',
   ratio_medical_expenses:    'Portion attributed to medical expenses. Part of the four-way cost split.',
   ratio_legal_fees:          'Portion attributed to legal fees. Part of the four-way cost split.',
   ratio_other_costs:         'Portion attributed to miscellaneous costs. Together the four ratios must equal 1.0.',
+  
   default_currency:          'Currency applied automatically when creating new policies and quotes.',
   zwg_usd_exchange_rate:     'Exchange rate used for on-screen currency conversion (e.g. 13.56 means 1 USD = 13.56 ZWG). Does not affect stored amounts.',
   allow_multi_currency:      'Allow users to select ZWG when creating policies. When off, USD is the only option.',
@@ -194,7 +221,9 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
 
       <div className="grid grid-cols-4 gap-x-4 gap-y-3">
 
-        {/* Base Rates */}
+        {/* ══════════════════════════════════════════════════════════════
+            BASE RATES
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Base Rates" color={col} />
 
         <Field label="Base Premium %" fieldKey="base_premium_percentage">
@@ -208,7 +237,9 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         </Field>
         <div /> {/* spacer */}
 
-        {/* Add-on Coverage Fees */}
+        {/* ══════════════════════════════════════════════════════════════
+            ADD-ON COVERAGE FEES
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Add-on Coverage Fees" color={col} />
 
         <Field label="Roadside Assistance ($)" fieldKey="addon_roadside_assistance">
@@ -222,7 +253,23 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         </Field>
         <div />
 
-        {/* Risk Surcharges */}
+        {/* ══════════════════════════════════════════════════════════════
+            AGE-BASED RISK THRESHOLDS (NEW)
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader title="Age-Based Risk Thresholds" color={col} />
+
+        <Field label="Young Driver Age Cutoff" fieldKey="age_threshold_young_driver">
+          <NumInput step="1" min="18" max="30" {...f('age_threshold_young_driver')} />
+        </Field>
+        <Field label="Senior Driver Age Cutoff" fieldKey="age_threshold_senior_driver">
+          <NumInput step="1" min="60" max="80" {...f('age_threshold_senior_driver')} />
+        </Field>
+        <div />
+        <div />
+
+        {/* ══════════════════════════════════════════════════════════════
+            RISK SURCHARGES
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Risk Surcharges" color={col} />
 
         <Field label="Young Driver" fieldKey="surcharge_young_driver">
@@ -236,7 +283,23 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         </Field>
         <div />
 
-        {/* Discounts */}
+        {/* ══════════════════════════════════════════════════════════════
+            CREDIT SCORE THRESHOLDS (NEW)
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader title="Credit Score Thresholds" color={col} />
+
+        <Field label="Poor Credit Cutoff" fieldKey="credit_threshold_poor">
+          <NumInput step="1" min="300" max="700" {...f('credit_threshold_poor')} />
+        </Field>
+        <Field label="Excellent Credit Cutoff" fieldKey="credit_threshold_excellent">
+          <NumInput step="1" min="700" max="850" {...f('credit_threshold_excellent')} />
+        </Field>
+        <div />
+        <div />
+
+        {/* ══════════════════════════════════════════════════════════════
+            DISCOUNTS
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Discounts" color={col} />
 
         <Field label="Excellent Credit" fieldKey="discount_excellent_credit">
@@ -245,10 +308,54 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         <Field label="Anti-Theft Device" fieldKey="discount_anti_theft">
           <NumInput step="0.0001" {...f('discount_anti_theft')} />
         </Field>
+        <Field label="Loyalty" fieldKey="discount_loyalty">
+          <NumInput step="0.0001" {...f('discount_loyalty')} />
+        </Field>
+        <div />
+
+        {/* ══════════════════════════════════════════════════════════════
+            VEHICLE RISK FACTORS (NEW)
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader title="Vehicle Risk Factors" color={col} />
+
+        <Field label="Old Vehicle Age Cutoff (years)" fieldKey="vehicle_age_threshold_old">
+          <NumInput step="1" min="5" max="20" {...f('vehicle_age_threshold_old')} />
+        </Field>
+        <Field label="Old Vehicle Surcharge" fieldKey="surcharge_old_vehicle">
+          <NumInput step="0.0001" {...f('surcharge_old_vehicle')} />
+        </Field>
+        <Field label="Modified Vehicle Surcharge" fieldKey="surcharge_modified_vehicle">
+          <NumInput step="0.0001" {...f('surcharge_modified_vehicle')} />
+        </Field>
+        <div />
+
+        {/* ══════════════════════════════════════════════════════════════
+            LOYALTY PROGRAM (NEW)
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader title="Loyalty Program" color={col} />
+
+        <Field label="Years Required for Loyalty" fieldKey="loyalty_years_threshold">
+          <NumInput step="1" min="1" max="10" {...f('loyalty_years_threshold')} />
+        </Field>
+        <div />
         <div />
         <div />
 
-        {/* Workflow Thresholds */}
+        {/* ══════════════════════════════════════════════════════════════
+            COVERAGE LIMITS (NEW)
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader title="Coverage Limits" color={col} />
+
+        <Field label="Minimum Coverage Amount ($)" fieldKey="minimum_coverage_amount">
+          <NumInput {...f('minimum_coverage_amount')} />
+        </Field>
+        <div />
+        <div />
+        <div />
+
+        {/* ══════════════════════════════════════════════════════════════
+            WORKFLOW THRESHOLDS
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Workflow Thresholds" color={col} />
 
         <Field label="Auto-Approve Limit ($)" fieldKey="threshold_auto_approve">
@@ -264,7 +371,9 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
           <NumInput step="0.01" min="0" max="1" {...f('threshold_variance_warning')} />
         </Field>
 
-        {/* Severity Multipliers */}
+        {/* ══════════════════════════════════════════════════════════════
+            SEVERITY MULTIPLIERS
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Severity Multipliers" color={col} />
 
         <Field label="Trivial" fieldKey="sev_trivial_mult">
@@ -285,7 +394,9 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         </Field>
         <div /><div /><div />
 
-        {/* Cost-Breakdown Ratios */}
+        {/* ══════════════════════════════════════════════════════════════
+            COST-BREAKDOWN RATIOS
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader
           title="Cost-Breakdown Ratios"
           color={col}
@@ -309,7 +420,9 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
           <NumInput step="0.0001" min="0" max="1" {...f('ratio_other_costs')} />
         </Field>
 
-        {/* Currency Settings */}
+        {/* ══════════════════════════════════════════════════════════════
+            CURRENCY SETTINGS
+        ══════════════════════════════════════════════════════════════ */}
         <SectionHeader title="Currency Settings" color={col} />
 
         <Field label="Default Currency" fieldKey="default_currency">

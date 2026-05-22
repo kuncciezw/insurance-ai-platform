@@ -144,7 +144,6 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
     coverage_amount = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
-        min_value=Decimal('1000.00')
     )
     deductible = serializers.DecimalField(
         max_digits=10,
@@ -205,6 +204,18 @@ class QuoteCalculationInputSerializer(serializers.Serializer):
     has_roadside_assistance = serializers.BooleanField(default=False)
     has_rental_coverage = serializers.BooleanField(default=False)
     has_glass_coverage = serializers.BooleanField(default=False)
+    
+    def validate_coverage_amount(self, value):
+        """Validate against dynamic minimum from settings"""
+        from system_settings.models import GlobalPricingSettings
+        settings = GlobalPricingSettings.get_solo()
+        
+        if value < settings.minimum_coverage_amount:
+            raise serializers.ValidationError(
+                f'Coverage amount must be at least {settings.minimum_coverage_amount}.'
+            )
+        return value
+
 
     def validate(self, data):
         """Validate that either IDs or details are provided"""

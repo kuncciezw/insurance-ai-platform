@@ -15,6 +15,7 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
+from apps.fraud_detection.views import explain_claim
 # API Documentation Schema
 schema_view = get_schema_view(
     openapi.Info(
@@ -48,6 +49,8 @@ urlpatterns = [
     
     # System Settings
     path('api/system-settings/', include('system_settings.urls')), 
+    
+    path('api/ai/explain-claim/', explain_claim, name='ai-explain-claim'),
 ]
 
 # Serve media files in development
