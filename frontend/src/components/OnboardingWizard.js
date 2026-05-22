@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import Sidebar from './Sidebar';
 import { useNotification } from './notifications/useNotification';
+import { validators } from '../utils/ValidationUtils';
 import {
   User,
   Car,
@@ -13,7 +14,6 @@ import {
   TrendingUp,
   MapPin,
   Briefcase,
-  Settings,
 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -50,8 +50,8 @@ export default function OnboardingWizard() {
   const navigate = useNavigate();
   const { showNotification, NotificationContainer } = useNotification();
 
-  const [currentStep,           setCurrentStep]           = useState(1);
-  const [isSubmitting,          setIsSubmitting]          = useState(false);
+  const [currentStep,            setCurrentStep]          = useState(1);
+  const [isSubmitting,           setIsSubmitting]         = useState(false);
   const [calculatedCreditScore, setCalculatedCreditScore] = useState(650);
 
   // ── Step 1-3 state (Policyholder) ───────────────────────────────────────────
@@ -96,8 +96,10 @@ export default function OnboardingWizard() {
     has_defensive_license:  false,
     is_medical_license_valid: true,
     has_anti_theft: false,
+    has_tracker:    false,
     has_airbags:    true,
     has_abs:        true,
+    has_other_safety: false,
     is_modified:    false,
   });
 
@@ -113,6 +115,13 @@ export default function OnboardingWizard() {
     const years = parseInt(ph.years_with_company) || 0;
     score += Math.min(years * 5, 50);
 
+    // Employment Status Impact
+    if      (ph.occupation === 'EMPLOYED')      score += 30;
+    else if (ph.occupation === 'SELF_EMPLOYED') score += 20;
+    else if (ph.occupation === 'RETIRED')       score += 15;
+    else if (ph.occupation === 'STUDENT')       score += 5;
+    else if (ph.occupation === 'UNEMPLOYED')    score -= 20;
+
     if (risk.has_driving_license)      score += 20;
     if (risk.has_defensive_license)    score += 15;
     if (!risk.is_medical_license_valid) score -= 30;
@@ -121,47 +130,73 @@ export default function OnboardingWizard() {
   }, [
     ph.monthly_income,
     ph.years_with_company,
+    ph.occupation,
     risk.has_driving_license,
     risk.has_defensive_license,
     risk.is_medical_license_valid,
   ]);
 
-  // ── Validation ──────────────────────────────────────────────────────────────
+  // ── Validation using ValidationUtils ────────────────────────────────────────
   const validateStep = (step) => {
-    if (step === 1) {
-      if (!ph.first_name || !ph.last_name || !ph.date_of_birth || !ph.gender) {
-        showNotification('Please fill in all required fields.', 'error');
-        return false;
-      }
+    let validationsConfig = {};
+
+    switch (step) {
+      case 1:
+        validationsConfig = {
+          first_name: validators.required(ph.first_name, 'First Name'),
+          last_name: validators.required(ph.last_name, 'Last Name'),
+          date_of_birth: validators.dateOfBirth(ph.date_of_birth, 18),
+          gender: validators.required(ph.gender, 'Gender'),
+        };
+        if (ph.national_id) {
+          validationsConfig.national_id = validators.zimbabweNationalId(ph.national_id);
+        }
+        break;
+      case 2:
+        validationsConfig = {
+          email: validators.email(ph.email),
+          phone_number: validators.zimbabwePhone(ph.phone_number),
+          address_line1: validators.required(ph.address_line1, 'Address Line 1'),
+          city: validators.required(ph.city, 'City'),
+          state: validators.required(ph.state, 'State/Province'),
+          country: validators.required(ph.country, 'Country'),
+        };
+        break;
+      case 3:
+        validationsConfig = {
+          monthly_income: validators.money(ph.monthly_income, { required: true, min: 0 }),
+          years_with_company: validators.numericRange(ph.years_with_company, 0, 100, 'Years with Company'),
+        };
+        break;
+      case 4:
+        validationsConfig = {
+          make: validators.required(veh.make, 'Make'),
+          model: validators.required(veh.model, 'Model'),
+          manufacture_year: validators.vehicleYear(veh.manufacture_year),
+          registration_number: validators.vehicleRegistration(veh.registration_number),
+          vin: validators.vin(veh.vin),
+        };
+        break;
+      case 5:
+        validationsConfig = {
+          market_value: validators.money(veh.market_value, { required: true, min: 0 }),
+          odometer_reading: validators.numericRange(veh.odometer_reading, 0, 5000000, 'Odometer Reading'),
+          seating_capacity: validators.numericRange(veh.seating_capacity, 2, 50, 'Seating Capacity'),
+          engine_capacity: validators.numericRange(veh.engine_capacity, 500, 10000, 'Engine Capacity'),
+        };
+        break;
+      default:
+        return true;
     }
-    if (step === 2) {
-      if (!ph.email || !ph.phone_number || !ph.address_line1 || !ph.city || !ph.state || !ph.country) {
-        showNotification('Please fill in all required fields.', 'error');
-        return false;
-      }
+
+    const { isValid, errors } = validators.validateForm(validationsConfig);
+
+    if (!isValid) {
+      const firstError = Object.values(errors)[0];
+      showNotification(firstError, 'error');
+      return false;
     }
-    if (step === 3) {
-      if (ph.monthly_income === '' || ph.years_with_company === '') {
-        showNotification('Please fill in all required fields.', 'error');
-        return false;
-      }
-    }
-    if (step === 4) {
-      if (!veh.make || !veh.model || !veh.registration_number || !veh.vin) {
-        showNotification('Please fill in all required fields.', 'error');
-        return false;
-      }
-      if (veh.vin.length !== 17) {
-        showNotification('VIN must be exactly 17 characters.', 'error');
-        return false;
-      }
-    }
-    if (step === 5) {
-      if (veh.market_value === '' || veh.odometer_reading === '' || veh.engine_capacity === '' || veh.seating_capacity === '') {
-        showNotification('Please fill in all required fields.', 'error');
-        return false;
-      }
-    }
+
     return true;
   };
 
@@ -173,6 +208,8 @@ export default function OnboardingWizard() {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (!validateStep(5)) return; 
+
     setIsSubmitting(true);
     try {
       const phPayload = {
@@ -188,6 +225,8 @@ export default function OnboardingWizard() {
 
       const vehPayload = {
         ...veh,
+        vin: validators.vin(veh.vin).formatted || veh.vin,
+        registration_number: validators.vehicleRegistration(veh.registration_number).formatted || veh.registration_number,
         manufacture_year: parseInt(veh.manufacture_year) || new Date().getFullYear(),
         seating_capacity: parseInt(veh.seating_capacity) || 5,
         engine_capacity: parseInt(veh.engine_capacity) || 1500,
@@ -195,8 +234,10 @@ export default function OnboardingWizard() {
         odometer_reading: parseInt(veh.odometer_reading) || 0,
         policyholder:   phResponse.id,
         has_anti_theft: risk.has_anti_theft,
+        has_tracker:    risk.has_tracker,
         has_airbags:    risk.has_airbags,
         has_abs:        risk.has_abs,
+        has_other_safety: risk.has_other_safety,
         is_modified:    risk.is_modified,
       };
       await api.createVehicle(vehPayload);
@@ -322,7 +363,7 @@ export default function OnboardingWizard() {
                       onChange={(e) => setPh({ ...ph, date_of_birth: e.target.value })}
                       className={inputCls}
                       style={inputSty}
-                      max={new Date().toISOString().split('T')[0]}
+                      max={validators.getMaxDateForAge(18)}
                     />
                   </div>
                   <div>
@@ -507,7 +548,7 @@ export default function OnboardingWizard() {
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls} style={labelSty}>Occupation *</label>
+                    <label className={labelCls} style={labelSty}>Employment Status *</label>
                     <select
                       required
                       value={ph.occupation}
@@ -848,6 +889,17 @@ export default function OnboardingWizard() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
+                        checked={risk.has_tracker}
+                        onChange={(e) => setRisk({ ...risk, has_tracker: e.target.checked })}
+                        className="w-4 h-4 rounded"
+                        style={{ accentColor: '#FF6B4A' }}
+                      />
+                      <span className="text-sm" style={{ color: '#7F8C8D' }}>Tracker</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
                         checked={risk.has_airbags}
                         onChange={(e) => setRisk({ ...risk, has_airbags: e.target.checked })}
                         className="w-4 h-4 rounded"
@@ -876,6 +928,17 @@ export default function OnboardingWizard() {
                         style={{ accentColor: '#FF6B4A' }}
                       />
                       <span className="text-sm" style={{ color: '#7F8C8D' }}>Modified Vehicle</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={risk.has_other_safety}
+                        onChange={(e) => setRisk({ ...risk, has_other_safety: e.target.checked })}
+                        className="w-4 h-4 rounded"
+                        style={{ accentColor: '#FF6B4A' }}
+                      />
+                      <span className="text-sm" style={{ color: '#7F8C8D' }}>Other</span>
                     </label>
                   </div>
                 </div>

@@ -26,7 +26,6 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split('T')[0];
 const nextYearISO = () => {
   const d = new Date();
@@ -37,7 +36,6 @@ const nextYearISO = () => {
 const mkPolicyNum = () =>
   `POL-${Math.random().toString(36).substr(2, 12).toUpperCase().padEnd(12, '0')}`;
 
-// ─── Static maps ──────────────────────────────────────────────────────────────
 const POLICY_TYPES = {
   COMPREHENSIVE: 'Comprehensive',
   THIRD_PARTY: 'Third Party',
@@ -68,6 +66,7 @@ const COVERAGE_HINTS = {
 };
 
 const blankForm = () => ({
+  policy_number: '',
   policyholder: '',
   vehicle: '',
   policy_type: 'COMPREHENSIVE',
@@ -80,8 +79,7 @@ const blankForm = () => ({
   has_glass_coverage: false,
 });
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
-function StepIndicator({ step, editingId }) {
+function StepIndicator({ step }) {
   const steps = [
     { n: 1, label: 'Policy Details' },
     { n: 2, label: 'Review & Price' },
@@ -123,7 +121,6 @@ function StepIndicator({ step, editingId }) {
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function Policies() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -138,14 +135,12 @@ export default function Policies() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currency, setCurrency]   = useState('USD');
 
-  // Modal
   const [showModal, setShowModal] = useState(false);
   const [modalStep, setModalStep] = useState(1);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData]   = useState(blankForm());
   const [isSaving, setIsSaving]   = useState(false);
 
-  // Searchable selects
   const [phSearch, setPhSearch]     = useState('');
   const [vehSearch, setVehSearch]   = useState('');
   const [showPhDrop, setShowPhDrop] = useState(false);
@@ -159,34 +154,31 @@ export default function Policies() {
   const phRef  = useRef(null);
   const vehRef = useRef(null);
 
-  // Premium calc
   const [isCalcing, setIsCalcing]   = useState(false);
   const [premiumData, setPremiumData] = useState(null);
   const debounceRef    = useRef(null);
   const phDebounceRef  = useRef(null);
   const vehDebounceRef = useRef(null);
 
-  // Build dynamic add-ons array from pricing settings
   const ADD_ONS = pricingSettings ? [
-    { 
-      key: 'has_roadside_assistance', 
-      label: 'Roadside Assistance', 
-      price: `+${fmtMoney(pricingSettings.addon_roadside_assistance, currency)}/yr` 
+    {
+      key: 'has_roadside_assistance',
+      label: 'Roadside Assistance',
+      price: `+${fmtMoney(pricingSettings.addon_roadside_assistance, currency)}/yr`,
     },
-    { 
-      key: 'has_rental_coverage', 
-      label: 'Rental Coverage', 
-      price: `+${fmtMoney(pricingSettings.addon_rental_coverage, currency)}/yr` 
+    {
+      key: 'has_rental_coverage',
+      label: 'Rental Coverage',
+      price: `+${fmtMoney(pricingSettings.addon_rental_coverage, currency)}/yr`,
     },
-    { 
-      key: 'has_glass_coverage', 
-      label: 'Glass Coverage', 
-      price: `+${fmtMoney(pricingSettings.addon_glass_coverage, currency)}/yr` 
+    {
+      key: 'has_glass_coverage',
+      label: 'Glass Coverage',
+      price: `+${fmtMoney(pricingSettings.addon_glass_coverage, currency)}/yr`,
     },
   ] : [];
 
-  // ═══ Effects ═══════════════════════════════════════════════════════════════
-
+  // ── Click-outside for dropdowns ────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (phRef.current  && !phRef.current.contains(e.target))  setShowPhDrop(false);
@@ -196,6 +188,7 @@ export default function Policies() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ── Open modal from router state ───────────────────────────────────────────
   useEffect(() => {
     if (location.state?.openModal) {
       openModal();
@@ -204,15 +197,14 @@ export default function Policies() {
           .then((ph) => {
             applyPH(ph);
             if (location.state.vehicleId) {
-              api.getVehicle(location.state.vehicleId)
-                .then(applyVeh).catch(() => {});
+              api.getVehicle(location.state.vehicleId).then(applyVeh).catch(() => {});
             }
           }).catch(() => {});
       }
     }
   }, []); // eslint-disable-line
 
-  // PH search
+  // ── Policyholder search ────────────────────────────────────────────────────
   useEffect(() => {
     if (selectedPH) return;
     clearTimeout(phDebounceRef.current);
@@ -238,7 +230,7 @@ export default function Policies() {
     return () => clearTimeout(phDebounceRef.current);
   }, [phSearch, selectedPH]);
 
-  // Vehicle search
+  // ── Vehicle search ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedPH) { setVehOptions([]); return; }
     if (selectedVeh) return;
@@ -260,7 +252,7 @@ export default function Policies() {
     return () => clearTimeout(vehDebounceRef.current);
   }, [selectedPH, vehSearch, selectedVeh]); // eslint-disable-line
 
-  // Auto-advance end_date
+  // ── Auto-advance end_date when start_date changes ─────────────────────────
   useEffect(() => {
     if (!editingId && formData.start_date) {
       const d = new Date(formData.start_date);
@@ -269,7 +261,7 @@ export default function Policies() {
     }
   }, [formData.start_date]); // eslint-disable-line
 
-  // Trigger premium calc when entering step 2 or when deps change on step 2
+  // ── Premium recalculation on step 2 ───────────────────────────────────────
   useEffect(() => {
     if (!selectedPH || !selectedVeh) return;
     if (modalStep !== 2) return;
@@ -284,8 +276,7 @@ export default function Policies() {
 
   useEffect(() => { fetchAllData(); }, []);
 
-  // ═══ Data ══════════════════════════════════════════════════════════════════
-
+  // ── Data ───────────────────────────────────────────────────────────────────
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -301,34 +292,30 @@ export default function Policies() {
     } catch { showNotification('Failed to refresh policies', 'error'); }
   };
 
-  // ═══ Premium calc ══════════════════════════════════════════════════════════
-
+  // ── Premium calc ───────────────────────────────────────────────────────────
   const runPremiumCalc = async () => {
     if (!selectedPH || !selectedVeh || !pricingSettings) return;
     setIsCalcing(true);
-    
     try {
       const vVal = parseFloat(selectedVeh.market_value || 0);
-      
       const res = await api.calculatePremium({
-        policy_type:    formData.policy_type,
-        coverage_level: formData.coverage_level,
-        coverage_amount: vVal * 1.0, // Backend will calculate actual coverage
-        deductible: vVal * 0.1,       // Backend will calculate actual deductible
-        customer_age:              selectedPH.age            ?? 30,
-        customer_credit_score:     selectedPH.credit_score   ?? 650,
+        policy_type:               formData.policy_type,
+        coverage_level:            formData.coverage_level,
+        coverage_amount:           vVal * 1.0,
+        deductible:                vVal * 0.1,
+        customer_age:              selectedPH.age              ?? 30,
+        customer_credit_score:     selectedPH.credit_score     ?? 650,
         customer_years_experience: selectedPH.years_with_company ?? 0,
         vehicle_manufacture_year:  selectedVeh.manufacture_year,
-        vehicle_make:  selectedVeh.make,
-        vehicle_model: selectedVeh.model,
-        vehicle_value: vVal,
-        vehicle_has_anti_theft: selectedVeh.has_anti_theft || false,
-        vehicle_is_modified:    selectedVeh.is_modified    || false,
-        has_roadside_assistance: formData.has_roadside_assistance,
-        has_rental_coverage:     formData.has_rental_coverage,
-        has_glass_coverage:      formData.has_glass_coverage,
+        vehicle_make:              selectedVeh.make,
+        vehicle_model:             selectedVeh.model,
+        vehicle_value:             vVal,
+        vehicle_has_anti_theft:    selectedVeh.has_anti_theft  || false,
+        vehicle_is_modified:       selectedVeh.is_modified     || false,
+        has_roadside_assistance:   formData.has_roadside_assistance,
+        has_rental_coverage:       formData.has_rental_coverage,
+        has_glass_coverage:        formData.has_glass_coverage,
       });
-      
       setPremiumData({
         premium_amount:  res.final_premium,
         coverage_amount: res.breakdown.coverage_amount,
@@ -338,22 +325,23 @@ export default function Policies() {
         risk_adj:        res.risk_adjustment,
         discounts:       res.discount_amount,
       });
-    } catch (err) {
-      console.error('Premium calculation failed:', err);
+    } catch {
       showNotification('Failed to calculate premium. Please try again.', 'error');
       setPremiumData(null);
-    } finally { 
-      setIsCalcing(false); 
+    } finally {
+      setIsCalcing(false);
     }
   };
 
-  // ═══ Select helpers ════════════════════════════════════════════════════════
-
+  // ── Dropdown helpers ───────────────────────────────────────────────────────
   const applyPH = (ph) => {
     setSelectedPH(ph);
     setPhSearch(ph.full_name || `${ph.first_name} ${ph.last_name}`);
     setShowPhDrop(false);
-    setSelectedVeh(null); setVehSearch(''); setVehOptions([]); setPremiumData(null);
+    setSelectedVeh(null);
+    setVehSearch('');
+    setVehOptions([]);
+    setPremiumData(null);
     setFormData((prev) => ({ ...prev, policyholder: String(ph.id), vehicle: '' }));
   };
 
@@ -375,8 +363,7 @@ export default function Policies() {
     setFormData((prev) => ({ ...prev, vehicle: '' }));
   };
 
-  // ═══ Modal helpers ══════════════════════════════════════════════════════════
-
+  // ── Modal helpers ──────────────────────────────────────────────────────────
   const openModal = () => { resetForm(); setShowModal(true); setModalStep(1); };
 
   const handleNextStep = () => {
@@ -387,8 +374,7 @@ export default function Policies() {
     setModalStep(2);
   };
 
-  // ═══ CRUD ══════════════════════════════════════════════════════════════════
-
+  // ── CRUD ───────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!formData.policyholder || !formData.vehicle) {
       showNotification('Please select a policyholder and a vehicle.', 'error');
@@ -397,19 +383,19 @@ export default function Policies() {
     setIsSaving(true);
     try {
       const payload = {
-        policyholder:   formData.policyholder,
-        vehicle:        formData.vehicle,
-        policy_type:    formData.policy_type,
-        coverage_level: formData.coverage_level,
-        start_date:     formData.start_date,
-        end_date:       formData.end_date,
-        status:         formData.status,
+        policy_number:           editingId ? formData.policy_number : mkPolicyNum(),
+        policyholder:            formData.policyholder,
+        vehicle:                 formData.vehicle,
+        policy_type:             formData.policy_type,
+        coverage_level:          formData.coverage_level,
+        start_date:              formData.start_date,
+        end_date:                formData.end_date,
+        status:                  formData.status,
         currency,
         has_roadside_assistance: formData.has_roadside_assistance,
         has_rental_coverage:     formData.has_rental_coverage,
         has_glass_coverage:      formData.has_glass_coverage,
       };
-      if (!editingId) payload.policy_number = mkPolicyNum();
 
       if (editingId) {
         await api.updatePolicy(editingId, payload);
@@ -430,18 +416,11 @@ export default function Policies() {
     e.stopPropagation();
     setEditingId(policy.id);
     try {
-      const [fp, ph, veh] = await Promise.all([
-        api.getPolicy(policy.id),
-        api.getPolicyholder(policy.policyholder || policy.policyholder_id),
-        api.getVehicle(policy.vehicle || policy.vehicle_id),
-      ]).catch(async () => {
-        const fp = await api.getPolicy(policy.id);
-        const [ph, veh] = await Promise.all([
-          api.getPolicyholder(fp.policyholder),
-          api.getVehicle(fp.vehicle),
-        ]);
-        return [fp, ph, veh];
-      });
+      const fp = await api.getPolicy(policy.id);
+      const [ph, veh] = await Promise.all([
+        api.getPolicyholder(fp.policyholder),
+        api.getVehicle(fp.vehicle),
+      ]);
 
       setSelectedPH(ph);
       setSelectedVeh(veh);
@@ -454,40 +433,49 @@ export default function Policies() {
           premium_amount:  fp.premium_amount,
           coverage_amount: fp.coverage_amount,
           deductible:      fp.deductible,
-          confidence:      null, ml_base: null,
+          confidence:      null,
+          ml_base:         null,
         });
       }
 
       setFormData({
-        policyholder:            String(fp.policyholder || ''),
-        vehicle:                 String(fp.vehicle      || ''),
-        policy_type:             fp.policy_type    || 'COMPREHENSIVE',
-        coverage_level:          fp.coverage_level || 'STANDARD',
-        start_date:              fp.start_date     || todayISO(),
-        end_date:                fp.end_date       || nextYearISO(),
-        status:                  fp.status         || 'ACTIVE',
-        has_roadside_assistance: fp.has_roadside_assistance || false,
-        has_rental_coverage:     fp.has_rental_coverage     || false,
-        has_glass_coverage:      fp.has_glass_coverage      || false,
+        policy_number:           fp.policy_number             || '',
+        policyholder:            String(fp.policyholder       || ''),
+        vehicle:                 String(fp.vehicle            || ''),
+        policy_type:             fp.policy_type               || 'COMPREHENSIVE',
+        coverage_level:          fp.coverage_level            || 'STANDARD',
+        start_date:              fp.start_date                || todayISO(),
+        end_date:                fp.end_date                  || nextYearISO(),
+        status:                  fp.status                    || 'ACTIVE',
+        has_roadside_assistance: fp.has_roadside_assistance   || false,
+        has_rental_coverage:     fp.has_rental_coverage       || false,
+        has_glass_coverage:      fp.has_glass_coverage        || false,
       });
 
       setModalStep(1);
       setShowModal(true);
-    } catch { showNotification('Failed to load policy details', 'error'); }
+    } catch {
+      showNotification('Failed to load policy details', 'error');
+    }
   };
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
     const confirmed = await showConfirm({
-      title: 'Delete Policy', message: 'Are you sure? This cannot be undone.',
-      confirmText: 'Delete', cancelText: 'Cancel', type: 'danger',
+      title: 'Delete Policy',
+      message: 'Are you sure? This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger',
     });
     if (confirmed) {
       try {
         await api.deletePolicy(id);
         showNotification('Policy deleted successfully!', 'success');
         refreshPolicies();
-      } catch (err) { showNotification(err.message || 'Failed to delete policy', 'error'); }
+      } catch (err) {
+        showNotification(err.message || 'Failed to delete policy', 'error');
+      }
     }
   };
 
@@ -502,7 +490,6 @@ export default function Policies() {
       .toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // ─── Step subtitle ────────────────────────────────────────────────────────
   const stepSubtitle =
     modalStep === 1
       ? editingId
@@ -512,8 +499,7 @@ export default function Policies() {
         ? 'Premium recalculated — confirm to update the policy'
         : 'Review the AI-calculated premium before issuing';
 
-  // ═══ Render ════════════════════════════════════════════════════════════════
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#F8F9FA' }}>
       <Sidebar />
@@ -537,7 +523,11 @@ export default function Policies() {
                 {['USD', 'ZWG'].map((c) => (
                   <button key={c} onClick={() => setCurrency(c)}
                     className="px-4 py-1.5 rounded-lg text-sm font-bold transition-all duration-200"
-                    style={{ backgroundColor: currency === c ? '#FF6B4A' : 'transparent', color: currency === c ? '#FFFFFF' : '#7F8C8D', boxShadow: currency === c ? '0 2px 6px rgba(255,107,74,0.35)' : 'none' }}>
+                    style={{
+                      backgroundColor: currency === c ? '#FF6B4A' : 'transparent',
+                      color: currency === c ? '#FFFFFF' : '#7F8C8D',
+                      boxShadow: currency === c ? '0 2px 6px rgba(255,107,74,0.35)' : 'none',
+                    }}>
                     {c}
                   </button>
                 ))}
@@ -574,7 +564,7 @@ export default function Policies() {
               <table className="w-full">
                 <thead style={{ backgroundColor: '#F8F9FA', borderBottom: '2px solid #E5E7EB' }}>
                   <tr>
-                    {['Policy Number','Policyholder','Vehicle','Type',`Premium (${currency})`,'Status','Actions'].map((h) => (
+                    {['Policy Number', 'Policyholder', 'Vehicle', 'Type', `Premium (${currency})`, 'Status', 'Actions'].map((h) => (
                       <th key={h} className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#2C3E50' }}>{h}</th>
                     ))}
                   </tr>
@@ -630,7 +620,7 @@ export default function Policies() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          MODAL — 2-step policy issuance
+          MODAL
       ══════════════════════════════════════════════════════════════════════ */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center p-4 z-50"
@@ -638,7 +628,7 @@ export default function Policies() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
             style={{ maxHeight: '92vh' }}>
 
-            {/* ── Modal Header ── */}
+            {/* Modal Header */}
             <div className="flex items-center justify-between px-8 py-5 border-b flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
               <div>
                 <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#2C3E50' }}>
@@ -649,14 +639,15 @@ export default function Policies() {
                 <p className="text-xs mt-0.5" style={{ color: '#7F8C8D' }}>{stepSubtitle}</p>
               </div>
               <div className="flex items-center gap-4">
-                {/* Step indicator */}
-                <StepIndicator step={modalStep} editingId={editingId} />
-                {/* Currency toggle */}
+                <StepIndicator step={modalStep} />
                 <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: '#F3F4F6' }}>
                   {['USD', 'ZWG'].map((c) => (
                     <button key={c} type="button" onClick={() => setCurrency(c)}
                       className="px-3 py-1 rounded-md text-xs font-bold transition-all duration-200"
-                      style={{ backgroundColor: currency === c ? '#FF6B4A' : 'transparent', color: currency === c ? '#FFFFFF' : '#7F8C8D' }}>
+                      style={{
+                        backgroundColor: currency === c ? '#FF6B4A' : 'transparent',
+                        color: currency === c ? '#FFFFFF' : '#7F8C8D',
+                      }}>
                       {c}
                     </button>
                   ))}
@@ -668,10 +659,10 @@ export default function Policies() {
               </div>
             </div>
 
-            {/* ── Modal Body ── */}
+            {/* Modal Body */}
             <div className="flex-1 overflow-y-auto">
 
-              {/* ════ STEP 1: Policy Details ════ */}
+              {/* ════ STEP 1 ════ */}
               {modalStep === 1 && (
                 <div className="px-8 py-6 space-y-7">
 
@@ -734,7 +725,8 @@ export default function Policies() {
                       <div>
                         <label className="block text-sm font-semibold mb-1.5" style={{ color: '#2C3E50' }}>
                           Vehicle *
-                          {selectedPH && vehOptions.length === 0 && !vehSearching && (
+                          {/* Only show "no vehicles registered" when PH is selected, no vehicle is selected, not searching, and options came back empty */}
+                          {selectedPH && !selectedVeh && vehOptions.length === 0 && !vehSearching && (
                             <span className="ml-2 text-xs font-normal" style={{ color: '#EF4444' }}>(no vehicles registered)</span>
                           )}
                         </label>
@@ -747,7 +739,10 @@ export default function Policies() {
                               disabled={!selectedPH}
                               placeholder={selectedPH ? 'Search vehicle…' : 'Select a policyholder first'}
                               className="w-full pl-9 pr-9 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ borderColor: selectedVeh ? '#10B981' : '#E5E7EB', backgroundColor: selectedVeh ? '#F0FDF4' : (selectedPH ? 'white' : '#F8F9FA') }} />
+                              style={{
+                                borderColor: selectedVeh ? '#10B981' : '#E5E7EB',
+                                backgroundColor: selectedVeh ? '#F0FDF4' : (selectedPH ? 'white' : '#F8F9FA'),
+                              }} />
                             {vehSearching
                               ? <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin" style={{ color: '#9CA3AF' }} />
                               : selectedVeh
@@ -835,7 +830,7 @@ export default function Policies() {
                 </div>
               )}
 
-              {/* ════ STEP 2: Premium Review ════ */}
+              {/* ════ STEP 2 ════ */}
               {modalStep === 2 && (
                 <div className="px-8 py-6">
 
@@ -869,9 +864,13 @@ export default function Policies() {
                     </button>
                   </div>
 
-                  {/* Premium Calculator — hero card */}
+                  {/* Premium Calculator */}
                   <div className="rounded-2xl border-2 overflow-hidden"
-                    style={{ borderColor: premiumData ? '#A7F3D0' : '#E5E7EB', background: premiumData ? 'linear-gradient(135deg,#F0FDF4 0%,#ECFDF5 100%)' : '#F8F9FA', transition: 'all 0.4s ease' }}>
+                    style={{
+                      borderColor: premiumData ? '#A7F3D0' : '#E5E7EB',
+                      background: premiumData ? 'linear-gradient(135deg,#F0FDF4 0%,#ECFDF5 100%)' : '#F8F9FA',
+                      transition: 'all 0.4s ease',
+                    }}>
 
                     {/* Card header */}
                     <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: premiumData ? '#D1FAE5' : '#E5E7EB' }}>
@@ -909,7 +908,11 @@ export default function Policies() {
                         { label: 'Deductible', key: 'deductible', hint: `${COVERAGE_HINTS[formData.coverage_level]?.ded ?? '—'} of coverage`, icon: <Info className="w-4 h-4" /> },
                       ].map(({ label, key, hint, icon, big }) => (
                         <div key={key} className="rounded-xl p-5"
-                          style={{ backgroundColor: premiumData ? 'white' : '#F3F4F6', border: premiumData ? '1px solid #A7F3D0' : '1px solid #E5E7EB', transition: 'all 0.3s ease' }}>
+                          style={{
+                            backgroundColor: premiumData ? 'white' : '#F3F4F6',
+                            border: premiumData ? '1px solid #A7F3D0' : '1px solid #E5E7EB',
+                            transition: 'all 0.3s ease',
+                          }}>
                           <div className="flex items-center gap-1.5 mb-3" style={{ color: premiumData ? '#059669' : '#9CA3AF' }}>
                             {icon}
                             <span className="text-xs font-semibold">{label}</span>
@@ -944,7 +947,7 @@ export default function Policies() {
                       </div>
                     )}
 
-                    {/* Active add-ons summary */}
+                    {/* Add-ons */}
                     <div className="px-6 pb-5 border-t pt-4" style={{ borderColor: '#D1FAE5' }}>
                       <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6EE7B7' }}>
                         Optional Add-ons
@@ -960,7 +963,10 @@ export default function Policies() {
                             return (
                               <label key={key}
                                 className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all duration-200 select-none"
-                                style={{ borderColor: active ? '#10B981' : '#D1FAE5', backgroundColor: active ? '#D1FAE5' : 'white' }}>
+                                style={{
+                                  borderColor: active ? '#10B981' : '#D1FAE5',
+                                  backgroundColor: active ? '#D1FAE5' : 'white',
+                                }}>
                                 <input
                                   type="checkbox"
                                   checked={active}
@@ -985,11 +991,9 @@ export default function Policies() {
               )}
             </div>
 
-            {/* ── Modal Footer ── */}
+            {/* Modal Footer */}
             <div className="flex items-center justify-between px-8 py-4 border-t flex-shrink-0"
               style={{ borderColor: '#E5E7EB', backgroundColor: '#F8F9FA' }}>
-
-              {/* Left: back / cancel */}
               {modalStep === 1 ? (
                 <button type="button" onClick={() => { setShowModal(false); resetForm(); }}
                   className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
@@ -1004,7 +1008,6 @@ export default function Policies() {
                 </button>
               )}
 
-              {/* Right: next / submit */}
               {modalStep === 1 ? (
                 <button type="button" onClick={handleNextStep}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold transition-all duration-200"

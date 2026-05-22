@@ -5,7 +5,7 @@ import { api } from '../../services/api';
 const HINTS = {
   base_premium_percentage:   'Fraction of vehicle market value charged as the starting premium (e.g. 0.05 = 5%).',
   minimum_premium:           'Absolute floor premium — no policy can be priced below this amount regardless of discounts.',
-  labor_rate_per_hour:       'Hourly repair labour cost used when estimating claims that include a repair component.',
+  labour_rate_per_hour:       'Hourly repair labour cost used when estimating claims that include a repair component.',
   
   addon_roadside_assistance: 'Flat fee added to a premium when the policyholder opts in to roadside assistance cover.',
   addon_rental_coverage:     'Flat fee added to a premium for rental-car cover while the insured vehicle is being repaired.',
@@ -232,8 +232,8 @@ export default function GlobalPricingSettingsTab({ companyProfile }) {
         <Field label="Minimum Premium ($)" fieldKey="minimum_premium">
           <NumInput {...f('minimum_premium')} />
         </Field>
-        <Field label="Labor Rate / Hour ($)" fieldKey="labor_rate_per_hour">
-          <NumInput {...f('labor_rate_per_hour')} />
+        <Field label="labour Rate / Hour ($)" fieldKey="labour_rate_per_hour">
+          <NumInput {...f('labour_rate_per_hour')} />
         </Field>
         <div /> {/* spacer */}
 

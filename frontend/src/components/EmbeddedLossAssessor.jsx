@@ -28,7 +28,7 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
   const [adjusterFields, setAdjusterFields] = useState({
     repair_complexity:    'Medium',
     parts_availability:   'Available',
-    labor_hours_estimate: 20,
+    labour_hours_estimate: 20,
   });
 
 
@@ -93,7 +93,7 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
       claimed_amount:       autoFields.claimed_amount    !== '' ? Number(autoFields.claimed_amount)    : 0,
       repair_complexity:    adjusterFields.repair_complexity,
       parts_availability:   adjusterFields.parts_availability,
-      labor_hours_estimate: Number(adjusterFields.labor_hours_estimate),
+      labour_hours_estimate: Number(adjusterFields.labour_hours_estimate),
     };
 
     try {
@@ -288,19 +288,19 @@ export default function EmbeddedLossAssessor({ claim, vehicle }) {
 
               <div className="col-span-2">
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#2C3E50' }}>
-                  Labor Hours Estimate
+                  labour Hours Estimate
                 </label>
                 <input
                   type="number"
                   min="0"
-                  value={adjusterFields.labor_hours_estimate}
-                  onChange={(e) => setAdjusterFields({ ...adjusterFields, labor_hours_estimate: parseInt(e.target.value) || 0 })}
+                  value={adjusterFields.labour_hours_estimate}
+                  onChange={(e) => setAdjusterFields({ ...adjusterFields, labour_hours_estimate: parseInt(e.target.value) || 0 })}
                   className={editableClass}
                   style={{ borderColor: '#DEE2E6', color: '#2C3E50' }}
                   placeholder="e.g. 20"
                 />
                 <p className="text-xs mt-1" style={{ color: '#7F8C8D' }}>
-                  Estimated @ ${settings?.labor_rate_per_hour} / hr · affects final cost
+                  Estimated @ ${settings?.labour_rate_per_hour} / hr · affects final cost
                 </p>
               </div>
             </div>
