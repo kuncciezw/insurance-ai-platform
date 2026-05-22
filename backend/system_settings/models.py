@@ -27,7 +27,7 @@ class GlobalPricingSettings(SingletonModel):
         max_digits=10, decimal_places=2, default=Decimal('100.00'),
         help_text="Absolute minimum premium charged on any policy"
     )
-    labor_rate_per_hour = models.DecimalField(
+    labour_rate_per_hour = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('75.00'),
         help_text="Repair labour rate used in claims cost estimation"
     )

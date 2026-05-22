@@ -107,7 +107,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterField(
             model_name='globalpricingsettings',
-            name='labor_rate_per_hour',
+            name='labour_rate_per_hour',
             field=models.DecimalField(decimal_places=2, default=Decimal('75.00'), help_text='Repair labour rate used in claims cost estimation', max_digits=10),
         ),
         migrations.AlterField(

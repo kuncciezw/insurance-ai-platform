@@ -24,7 +24,7 @@ class GlobalPricingSettingsAdmin(SingletonModelAdmin):
             'fields': (
                 'base_premium_percentage',
                 'minimum_premium',
-                'labor_rate_per_hour',
+                'labour_rate_per_hour',
             ),
         }),
 

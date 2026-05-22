@@ -590,7 +590,7 @@ def estimate_claim_cost_direct(request):
 
         # Fetch settings fresh — picks up any admin changes immediately
         settings = GlobalPricingSettings.get_solo()
-        labor_rate = float(settings.labor_rate_per_hour)
+        labour_rate = float(settings.labour_rate_per_hour)
         complexity_map = {'Low': 0.8, 'Medium': 1.0, 'High': 1.3}
         parts_map = {'Available': 1.0, 'Limited': 1.2, 'Rare': 1.5}
 
@@ -605,11 +605,11 @@ def estimate_claim_cost_direct(request):
                 parts_multiplier = parts_map.get(
                     data.get('parts_availability', 'Available'), 1.0
                 )
-                labor_hours = int(data.get('labor_hours_estimate', 20))
-                labor_cost = labor_hours * labor_rate
+                labour_hours = int(data.get('labour_hours_estimate', 20))
+                labour_cost = labour_hours * labour_rate
                 estimated_amount = (
                     (estimated_amount * complexity_multiplier * parts_multiplier)
-                    + (labor_cost * 0.3)
+                    + (labour_cost * 0.3)
                 )
 
             confidence_score = 0.85
@@ -629,15 +629,15 @@ def estimate_claim_cost_direct(request):
                     float(data['vehicle_value'])
                     * severity_multipliers.get(data['incident_severity'], 0.25)
                 )
-                labor_hours = int(data.get('labor_hours_estimate', 20))
-                labor_cost = labor_hours * labor_rate
+                labour_hours = int(data.get('labour_hours_estimate', 20))
+                labour_cost = labour_hours * labour_rate
                 complexity_adj = complexity_map.get(
                     data.get('repair_complexity', 'Medium'), 1.0
                 )
                 parts_adj = parts_map.get(
                     data.get('parts_availability', 'Available'), 1.0
                 )
-                estimated_amount = (base_estimate + labor_cost) * complexity_adj * parts_adj
+                estimated_amount = (base_estimate + labour_cost) * complexity_adj * parts_adj
                 severity = data['incident_severity']
             else:
                 estimated_amount = float(claim.vehicle.market_value) * 0.25

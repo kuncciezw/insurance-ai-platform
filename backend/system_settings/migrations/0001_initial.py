@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('base_premium_percentage', models.DecimalField(decimal_places=4, default=Decimal('0.05'), max_digits=5)),
                 ('minimum_premium', models.DecimalField(decimal_places=2, default=Decimal('100.00'), max_digits=10)),
-                ('labor_rate_per_hour', models.DecimalField(decimal_places=2, default=Decimal('75.00'), max_digits=10)),
+                ('labour_rate_per_hour', models.DecimalField(decimal_places=2, default=Decimal('75.00'), max_digits=10)),
                 ('addon_roadside_assistance', models.DecimalField(decimal_places=2, default=Decimal('50.00'), max_digits=10)),
                 ('addon_rental_coverage', models.DecimalField(decimal_places=2, default=Decimal('75.00'), max_digits=10)),
                 ('addon_glass_coverage', models.DecimalField(decimal_places=2, default=Decimal('30.00'), max_digits=10)),
